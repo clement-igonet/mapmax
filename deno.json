@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.177.0/build/three.module.js"
+  },
+  "tasks": {
+    "test": "deno test --allow-net --allow-read --allow-env tests/",
+    "test:unit": "deno test --allow-read tests/unit/",
+    "test:e2e": "deno test --allow-net --allow-read --allow-env tests/e2e/"
+  }
+}
