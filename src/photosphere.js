@@ -6,6 +6,7 @@
 // camera (bearing/pitch/fov), so vector layers drawn after this layer stay in
 // sync with the photo — one camera, one projection.
 import * as THREE from 'three';
+import { crossfadeAt, easeInOutCubic } from './transition.js';
 
 export const LAYER_ID = 'mapmax-photosphere';
 const SPHERE_RADIUS = 80;
@@ -148,19 +149,72 @@ export async function showPicture(pic) {
   photosphere.meshes.push(mesh);
   photosphere.visible = true;
   photosphere.map?.triggerRepaint();
-
-  if (pic.assets.hd && pic.assets.hd !== sdUrl) {
-    loadTexture(pic.assets.hd)
-      .then((hdTex) => {
-        if (!photosphere.meshes.includes(mesh)) return hdTex.dispose();
-        mesh.material.map?.dispose();
-        mesh.material.map = hdTex;
-        mesh.material.needsUpdate = true;
-        photosphere.map?.triggerRepaint();
-      })
-      .catch(() => {});
-  }
+  upgradeToHD(mesh, pic, sdUrl);
   return mesh;
+}
+
+function upgradeToHD(mesh, pic, currentUrl) {
+  if (!pic.assets.hd || pic.assets.hd === currentUrl) return;
+  loadTexture(pic.assets.hd)
+    .then((hdTex) => {
+      if (!photosphere.meshes.includes(mesh)) return hdTex.dispose();
+      mesh.material.map?.dispose();
+      mesh.material.map = hdTex;
+      mesh.material.needsUpdate = true;
+      photosphere.map?.triggerRepaint();
+    })
+    .catch(() => {});
+}
+
+// Continuous-movement transition to `toPic` (SPECIFICATIONS.md §2.4): the old
+// sphere is pushed backward along the travel bearing (the camera "walks"
+// forward through it) while the target cross-fades in from a slight zoom.
+export async function transitionToPicture(toPic, plan) {
+  const ps = photosphere;
+  const oldMesh = ps.meshes[ps.meshes.length - 1];
+  if (!oldMesh) return showPicture(toPic);
+
+  const sdUrl = toPic.assets.sd || toPic.assets.hd || toPic.assets.thumb;
+  const tex = await loadTexture(sdUrl);
+  const target = ps.makeMesh(tex, toPic);
+  target.userData.baseYaw = target.rotation.y;
+  target.material.opacity = 0;
+  target.renderOrder = oldMesh.renderOrder + 1;
+  ps.scene.add(target);
+  ps.meshes.push(target);
+
+  const bearingRad = (plan.bearing * Math.PI) / 180;
+  const dirX = Math.sin(bearingRad);
+  const dirZ = -Math.cos(bearingRad);
+  const maxOffset = SPHERE_RADIUS * plan.dolly;
+
+  await new Promise((resolve) => {
+    const t0 = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / plan.duration);
+      const e = easeInOutCubic(t);
+      const { oldOpacity, newOpacity, newScale } = crossfadeAt(e, plan);
+      oldMesh.position.set(-dirX * maxOffset * e, 0, -dirZ * maxOffset * e);
+      oldMesh.material.opacity = oldOpacity;
+      target.material.opacity = newOpacity;
+      target.scale.setScalar(newScale);
+      ps.map?.triggerRepaint();
+      if (t < 1) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+
+  ps.scene.remove(oldMesh);
+  oldMesh.geometry.dispose();
+  oldMesh.material.map?.dispose();
+  oldMesh.material.dispose();
+  ps.meshes = [target];
+  target.scale.setScalar(1);
+  target.material.opacity = 1;
+  ps.map?.triggerRepaint();
+  upgradeToHD(target, toPic, sdUrl);
+  return target;
 }
 
 export function hidePhotosphere() {
