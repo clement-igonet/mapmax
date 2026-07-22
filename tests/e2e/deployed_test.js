@@ -13,6 +13,13 @@ Deno.test('deployed page is served and wires the app (issue #1)', async () => {
   assert(html.includes('src/main.js'), 'app module missing');
   assert(html.includes('importmap'), 'three importmap missing (issue #3)');
   assert(html.includes('exit-street'), 'street exit button missing (issue #3)');
+  assert(html.includes('rel="icon"'), 'favicon missing (issue #14)');
+});
+
+Deno.test('deployed app hardens style against console errors (issue #14)', async () => {
+  const js = await (await fetch(`${BASE}/src/main.js`)).text();
+  assert(js.includes('styleimagemissing'), 'missing-sprite placeholder handler absent');
+  assert(js.includes('hardenBuildingHeights'), 'building height hardening absent');
 });
 
 Deno.test('deployed JS modules are served', async () => {
