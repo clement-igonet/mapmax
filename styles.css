@@ -1,0 +1,36 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+}
+
+#hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: rgba(20, 20, 24, 0.82);
+  color: #eee;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  max-width: 280px;
+  pointer-events: none;
+}
+
+#hud-title {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+#hud-status {
+  margin-top: 2px;
+  opacity: 0.85;
+}
