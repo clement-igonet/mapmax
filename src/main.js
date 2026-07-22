@@ -2,6 +2,7 @@
 import { OSM_STYLE_URL, START_VIEW, MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { enterStreetView, exitStreetView, isStreetMode } from './streetview.js';
+import { setupNavigation } from './navigation.js';
 
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
@@ -17,6 +18,7 @@ export const map = new maplibregl.Map({
 
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+setupNavigation(map);
 
 map.on('style.load', () => {
   ensureBuildings3D();

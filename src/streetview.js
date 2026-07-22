@@ -15,14 +15,17 @@ const state = {
   pic: null,
   maxPitch: STREET_PITCH,
   savedView: null,
-  onPictureChanged: null, // hook used by later milestones (arrows, minimap)
+  listeners: [], // notified with the picture on move, null on exit
 };
 
 export const isStreetMode = () => state.active;
 export const currentPicture = () => state.pic;
 export function onPictureChanged(cb) {
-  state.onPictureChanged = cb;
+  state.listeners.push(cb);
 }
+const emitPictureChanged = (pic) => {
+  for (const cb of state.listeners) cb(pic);
+};
 
 function setHandlers(map, enabled) {
   const handlers = [
@@ -62,7 +65,7 @@ export async function enterStreetView(map, pic) {
     bearing: pic.heading,
   });
   await showPicture(pic);
-  state.onPictureChanged?.(pic);
+  emitPictureChanged(pic);
   return pic;
 }
 
@@ -72,6 +75,7 @@ export function exitStreetView(map) {
   document.body.classList.remove('street-mode');
   removeLookControls(map);
   hidePhotosphere();
+  emitPictureChanged(null);
   setHandlers(map, true);
   const v = state.savedView;
   try {
