@@ -1,0 +1,140 @@
+{
+ "id": "5914cdbb-36a9-4e91-8527-fbebcf96d8d4",
+ "bbox": [
+  2.350124972,
+  48.854973972,
+  2.350124972,
+  48.854973972
+ ],
+ "type": "Feature",
+ "links": [
+  {
+   "rel": "license",
+   "href": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "title": "License for this object (CC-BY-SA-4.0)"
+  },
+  {
+   "rel": "self",
+   "href": "https://api.panoramax.xyz/api/collections/fe73d2db-1697-484c-8d10-ced87f97f1cf/items/5914cdbb-36a9-4e91-8527-fbebcf96d8d4",
+   "type": "application/geo+json"
+  },
+  {
+   "rel": "collection",
+   "href": "https://api.panoramax.xyz/api/collections/fe73d2db-1697-484c-8d10-ced87f97f1cf",
+   "type": "application/json"
+  },
+  {
+   "rel": "parent",
+   "href": "https://api.panoramax.xyz/api/collections/fe73d2db-1697-484c-8d10-ced87f97f1cf",
+   "type": "application/json"
+  },
+  {
+   "rel": "root",
+   "href": "https://api.panoramax.xyz/api",
+   "type": "application/json",
+   "title": "Instance catalog"
+  },
+  {
+   "rel": "next",
+   "href": "https://api.panoramax.xyz/api/collections/fe73d2db-1697-484c-8d10-ced87f97f1cf/items/41340b58-c2ad-47b5-ad26-006495ff0210",
+   "type": "application/geo+json",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.350146,
+     48.854961
+    ]
+   },
+   "id": "41340b58-c2ad-47b5-ad26-006495ff0210"
+  },
+  {
+   "rel": "via",
+   "href": "https://panoramax.openstreetmap.fr",
+   "type": "application/json",
+   "title": "Link to the original instance",
+   "instance_name": "osm-fr"
+  }
+ ],
+ "assets": {
+  "hd": {
+   "href": "https://panoramax.openstreetmap.fr/images/59/14/cd/bb/36a9-4e91-8527-fbebcf96d8d4.jpg",
+   "type": "image/jpeg",
+   "roles": [
+    "data"
+   ],
+   "title": "HD picture",
+   "description": "Highest resolution available of this picture"
+  },
+  "sd": {
+   "href": "https://panoramax.openstreetmap.fr/derivates/59/14/cd/bb/36a9-4e91-8527-fbebcf96d8d4/sd.jpg",
+   "type": "image/jpeg",
+   "roles": [
+    "visual"
+   ],
+   "title": "SD picture",
+   "description": "Picture in standard definition (fixed width of 2048px)"
+  },
+  "thumb": {
+   "href": "https://panoramax.openstreetmap.fr/derivates/59/14/cd/bb/36a9-4e91-8527-fbebcf96d8d4/thumb.jpg",
+   "type": "image/jpeg",
+   "roles": [
+    "thumbnail"
+   ],
+   "title": "Thumbnail",
+   "description": "Picture in low definition (fixed width of 500px)"
+  }
+ },
+ "geometry": {
+  "type": "Point",
+  "coordinates": [
+   2.350124972,
+   48.854973972
+  ]
+ },
+ "providers": [
+  {
+   "id": "f53b31d3-0cd8-465d-a0cb-09f809973241",
+   "name": "Britzz",
+   "roles": [
+    "producer"
+   ]
+  }
+ ],
+ "collection": "fe73d2db-1697-484c-8d10-ced87f97f1cf",
+ "properties": {
+  "created": "2025-05-07T19:29:42.272183+00:00",
+  "license": "CC-BY-SA-4.0",
+  "updated": "2025-06-03T03:02:44.485815+00:00",
+  "datetime": "2025-05-05T06:34:27.032208+00:00",
+  "semantics": [],
+  "collection": {
+   "semantics": []
+  },
+  "datetimetz": "2025-05-05T08:34:27.032208+02:00",
+  "annotations": [],
+  "view:azimuth": 208,
+  "geovisio:image": "https://panoramax.openstreetmap.fr/images/59/14/cd/bb/36a9-4e91-8527-fbebcf96d8d4.jpg",
+  "geovisio:status": "ready",
+  "geovisio:producer": "Britzz",
+  "geovisio:thumbnail": "https://panoramax.openstreetmap.fr/derivates/59/14/cd/bb/36a9-4e91-8527-fbebcf96d8d4/thumb.jpg",
+  "original_file:name": "oc_20250505_083427.jpg",
+  "original_file:size": 2008759,
+  "geovisio:visibility": "anyone",
+  "pers:interior_orientation": {
+   "camera_model": "FP3",
+   "focal_length": 4.36,
+   "camera_manufacturer": "Fairphone",
+   "sensor_array_dimensions": [
+    1584,
+    3168
+   ]
+  },
+  "geovisio:rank_in_collection": 1,
+  "quality:horizontal_accuracy": 5.0
+ },
+ "stac_version": "1.0.0",
+ "stac_extensions": [
+  "https://stac-extensions.github.io/view/v1.0.0/schema.json",
+  "https://stac-extensions.github.io/perspective-imagery/v1.0.0/schema.json"
+ ]
+}
