@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" font-family="system-ui, sans-serif">
+  <rect width="760" height="220" rx="10" fill="#f6f8fa"/>
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#333">Street-view experience on open data only</text>
+  <!-- three pillars -->
+  <g>
+    <rect x="40" y="55" width="200" height="110" rx="10" fill="#fff3e0" stroke="#ff6f00" stroke-width="2"/>
+    <circle cx="140" cy="95" r="24" fill="none" stroke="#ff6f00" stroke-width="3"/>
+    <circle cx="140" cy="95" r="10" fill="#ff6f00"/>
+    <text x="140" y="145" text-anchor="middle" font-size="14" font-weight="600" fill="#b34c00">Panoramax photos</text>
+  </g>
+  <g>
+    <rect x="280" y="55" width="200" height="110" rx="10" fill="#e8f0fe" stroke="#2962ff" stroke-width="2"/>
+    <path d="M330 120 L370 80 L410 110 L450 75" fill="none" stroke="#2962ff" stroke-width="3" stroke-linecap="round"/>
+    <rect x="345" y="95" width="14" height="25" fill="#2962ff" opacity="0.6"/>
+    <rect x="395" y="100" width="14" height="20" fill="#2962ff" opacity="0.6"/>
+    <text x="380" y="145" text-anchor="middle" font-size="14" font-weight="600" fill="#1a44b8">OpenStreetMap data</text>
+  </g>
+  <g>
+    <rect x="520" y="55" width="200" height="110" rx="10" fill="#e6f4ea" stroke="#188038" stroke-width="2"/>
+    <rect x="560" y="80" width="120" height="45" rx="6" fill="none" stroke="#188038" stroke-width="3"/>
+    <circle cx="620" cy="102" r="12" fill="none" stroke="#188038" stroke-width="3"/>
+    <text x="620" y="145" text-anchor="middle" font-size="14" font-weight="600" fill="#0d5c26">MapLibre rendering</text>
+  </g>
+  <text x="380" y="195" text-anchor="middle" font-size="13" fill="#666">walk the world at street level, photosphere by photosphere</text>
+</svg>

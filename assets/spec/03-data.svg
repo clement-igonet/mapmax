@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 230" font-family="system-ui, sans-serif">
+  <rect width="760" height="230" rx="10" fill="#f6f8fa"/>
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#333">Data sources — fetched directly, nothing re-hosted</text>
+  <defs><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#888"/></marker></defs>
+  <!-- panoramax -->
+  <rect x="50" y="60" width="230" height="60" rx="8" fill="#fff3e0" stroke="#ff6f00" stroke-width="2"/>
+  <text x="165" y="85" text-anchor="middle" font-size="13" font-weight="600" fill="#b34c00">Panoramax federation (STAC)</text>
+  <text x="165" y="105" text-anchor="middle" font-size="11" fill="#8a5a00">360°/flat pictures · position · heading · sequences</text>
+  <!-- osm tiles -->
+  <rect x="50" y="140" width="230" height="60" rx="8" fill="#e8f0fe" stroke="#2962ff" stroke-width="2"/>
+  <text x="165" y="165" text-anchor="middle" font-size="13" font-weight="600" fill="#1a44b8">OSM vector tiles</text>
+  <text x="165" y="185" text-anchor="middle" font-size="11" fill="#375ca8">ground · roads · buildings + heights</text>
+  <!-- arrows -->
+  <line x1="285" y1="90" x2="440" y2="115" stroke="#888" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="285" y1="170" x2="440" y2="140" stroke="#888" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- browser -->
+  <rect x="450" y="85" width="260" height="85" rx="8" fill="#fff" stroke="#333" stroke-width="2"/>
+  <rect x="450" y="85" width="260" height="20" rx="8" fill="#e0e0e0"/>
+  <circle cx="464" cy="95" r="4" fill="#ff6f00"/><circle cx="478" cy="95" r="4" fill="#ffc400"/><circle cx="492" cy="95" r="4" fill="#188038"/>
+  <text x="580" y="135" text-anchor="middle" font-size="13" font-weight="600" fill="#333">Browser — MapLibre GL JS</text>
+  <text x="580" y="155" text-anchor="middle" font-size="11" fill="#666">licenses respected, attribution in UI</text>
+</svg>

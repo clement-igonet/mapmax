@@ -4,6 +4,13 @@ Street-level immersive navigation: [Panoramax](https://panoramax.fr) photosphere
 
 See [SPECIFICATIONS.md](SPECIFICATIONS.md) for the full expectations.
 
+## Tests
+
+```sh
+deno task test        # unit + e2e against the deployed site — run after each deployment
+deno task test:unit   # pure logic only
+```
+
 ## Status
 
 Project bootstrap. Work is tracked through [GitHub Issues](../../issues) and merged via Pull Requests.

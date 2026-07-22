@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 190" font-family="system-ui, sans-serif">
+  <rect width="760" height="190" rx="10" fill="#f6f8fa"/>
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#333">Issue → PR → merge → deploy → test</text>
+  <defs><marker id="arr5" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#888"/></marker></defs>
+  <g text-anchor="middle" font-size="12" font-weight="600">
+    <rect x="40" y="70" width="110" height="50" rx="8" fill="#e8f0fe" stroke="#2962ff" stroke-width="2"/>
+    <text x="95" y="99" fill="#1a44b8">Issue #N</text>
+    <rect x="195" y="70" width="110" height="50" rx="8" fill="#ede7f6" stroke="#5e35b1" stroke-width="2"/>
+    <text x="250" y="99" fill="#4527a0">Pull Request</text>
+    <rect x="350" y="70" width="110" height="50" rx="8" fill="#e0e0e0" stroke="#555" stroke-width="2"/>
+    <text x="405" y="99" fill="#333">merge → main</text>
+    <rect x="505" y="70" width="110" height="50" rx="8" fill="#e6f4ea" stroke="#188038" stroke-width="2"/>
+    <text x="560" y="93" fill="#0d5c26">GitHub Pages</text>
+    <text x="560" y="110" font-size="10" font-weight="400" fill="#3c7a4e">continuous deploy</text>
+    <rect x="640" y="70" width="90" height="50" rx="8" fill="#fff3e0" stroke="#ff6f00" stroke-width="2"/>
+    <text x="685" y="93" fill="#b34c00">deno task</text>
+    <text x="685" y="110" fill="#b34c00">test</text>
+  </g>
+  <line x1="150" y1="95" x2="188" y2="95" stroke="#888" stroke-width="2" marker-end="url(#arr5)"/>
+  <line x1="305" y1="95" x2="343" y2="95" stroke="#888" stroke-width="2" marker-end="url(#arr5)"/>
+  <line x1="460" y1="95" x2="498" y2="95" stroke="#888" stroke-width="2" marker-end="url(#arr5)"/>
+  <line x1="615" y1="95" x2="633" y2="95" stroke="#888" stroke-width="2" marker-end="url(#arr5)"/>
+  <path d="M685 120 Q685 160 380 160 Q95 160 95 125" fill="none" stroke="#888" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr5)"/>
+  <text x="380" y="152" text-anchor="middle" font-size="11" fill="#666">failures become new issues</text>
+</svg>
