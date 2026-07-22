@@ -62,12 +62,12 @@ async function stac(path) {
   return res.json();
 }
 
-const idFromHref = (href) => {
+export const idFromHref = (href) => {
   const m = href && href.match(/\/items\/([0-9a-f-]+)/i);
   return m ? m[1] : null;
 };
 
-function normalizeItem(f) {
+export function normalizeItem(f) {
   const p = f.properties || {};
   const links = f.links || [];
   const io = p['pers:interior_orientation'] || {};

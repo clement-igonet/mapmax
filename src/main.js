@@ -1,6 +1,7 @@
 // MapMax entry point — MapLibre map with OSM ground rendering and 3D buildings.
 import { OSM_STYLE_URL, START_VIEW, MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
+import { enterStreetView, exitStreetView, isStreetMode } from './streetview.js';
 
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
@@ -24,33 +25,30 @@ map.on('style.load', () => {
 });
 
 onPictureClick(map, async (id) => {
-  status('Loading picture metadata…');
+  status('Loading picture…');
   try {
     const pic = await getPicture(id);
-    showPicturePopup(pic);
-    status('Picture loaded.');
+    await enterStreetView(map, pic);
+    document.getElementById('exit-street').hidden = false;
+    status(`${pic.type} by ${pic.producer || 'unknown'} — drag to look, scroll to zoom, Esc to exit.`);
   } catch (err) {
     console.error(err);
     status(`Failed to load picture: ${err.message}`);
   }
 });
 
-function showPicturePopup(pic) {
-  const date = pic.datetime ? new Date(pic.datetime).toLocaleDateString() : '?';
-  new maplibregl.Popup({ maxWidth: '340px' })
-    .setLngLat([pic.lon, pic.lat])
-    .setHTML(
-      `<div class="pic-popup">
-        <img src="${pic.assets.thumb || pic.assets.sd || ''}" alt="Panoramax picture" />
-        <div class="pic-meta">
-          <b>${pic.type}</b> · heading ${Math.round(pic.heading)}° · ${date}<br>
-          by ${pic.producer || 'unknown'} · ${pic.license || ''}<br>
-          sequence ${pic.sequenceId ? pic.sequenceId.slice(0, 8) : '?'}…
-        </div>
-      </div>`
-    )
-    .addTo(map);
-}
+const exitBtn = document.getElementById('exit-street');
+const leaveStreetUI = () => {
+  exitBtn.hidden = true;
+  status('Zoom in and click a Panoramax picture dot.');
+};
+exitBtn.addEventListener('click', () => {
+  if (isStreetMode()) exitStreetView(map);
+  leaveStreetUI();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !isStreetMode()) leaveStreetUI();
+});
 
 map.on('error', (e) => {
   console.error('Map error', e.error);
