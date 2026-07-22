@@ -34,3 +34,15 @@ body {
   margin-top: 2px;
   opacity: 0.85;
 }
+
+.pic-popup img {
+  width: 100%;
+  border-radius: 4px;
+  display: block;
+}
+
+.pic-popup .pic-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}

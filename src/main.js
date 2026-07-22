@@ -1,5 +1,6 @@
 // MapMax entry point — MapLibre map with OSM ground rendering and 3D buildings.
 import { OSM_STYLE_URL, START_VIEW, MAX_PITCH } from './config.js';
+import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
@@ -18,8 +19,38 @@ map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
 
 map.on('style.load', () => {
   ensureBuildings3D();
-  status('Map ready — OSM ground + 3D buildings.');
+  addPanoramaxLayers(map);
+  status('Zoom in and click a Panoramax picture dot.');
 });
+
+onPictureClick(map, async (id) => {
+  status('Loading picture metadata…');
+  try {
+    const pic = await getPicture(id);
+    showPicturePopup(pic);
+    status('Picture loaded.');
+  } catch (err) {
+    console.error(err);
+    status(`Failed to load picture: ${err.message}`);
+  }
+});
+
+function showPicturePopup(pic) {
+  const date = pic.datetime ? new Date(pic.datetime).toLocaleDateString() : '?';
+  new maplibregl.Popup({ maxWidth: '340px' })
+    .setLngLat([pic.lon, pic.lat])
+    .setHTML(
+      `<div class="pic-popup">
+        <img src="${pic.assets.thumb || pic.assets.sd || ''}" alt="Panoramax picture" />
+        <div class="pic-meta">
+          <b>${pic.type}</b> · heading ${Math.round(pic.heading)}° · ${date}<br>
+          by ${pic.producer || 'unknown'} · ${pic.license || ''}<br>
+          sequence ${pic.sequenceId ? pic.sequenceId.slice(0, 8) : '?'}…
+        </div>
+      </div>`
+    )
+    .addTo(map);
+}
 
 map.on('error', (e) => {
   console.error('Map error', e.error);
