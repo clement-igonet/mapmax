@@ -44,6 +44,18 @@ Deno.test('Panoramax vector tiles respond (issue #2)', async () => {
   await res.body?.cancel();
 });
 
+Deno.test('real Paris data yields navigation arrows (issue #4)', async () => {
+  const { normalizeItem } = await import('../../src/panoramax.js');
+  const { pickArrows } = await import('../../src/arrows.js');
+  const data = await (
+    await fetch('https://api.panoramax.xyz/api/search?bbox=2.349,48.854,2.351,48.856&limit=60')
+  ).json();
+  const pics = data.features.map(normalizeItem);
+  const arrows = pickArrows(pics[0], pics);
+  assert(arrows.length > 0, 'expected at least one arrow near a Paris picture');
+  assert(arrows.every((a) => a.dist <= 30 && a.dist >= 1.5));
+});
+
 Deno.test('Panoramax images allow CORS for WebGL textures (issue #3)', async () => {
   const search = await (
     await fetch('https://api.panoramax.xyz/api/search?bbox=2.34,48.85,2.36,48.86&limit=1')
