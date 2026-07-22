@@ -2,7 +2,14 @@
 
 Street-level immersive navigation: [Panoramax](https://panoramax.fr) photospheres inside a [MapLibre GL JS](https://maplibre.org) map, with OSM ground and 3D buildings — Google-Street-View-like controls, open data only, front-end only.
 
-See [SPECIFICATIONS.md](SPECIFICATIONS.md) for the full expectations.
+See [SPECIFICATIONS.md](SPECIFICATIONS.md) for the full expectations and [RULES.md](RULES.md) for the project rules (tests per issue, issue→PR workflow, front-end only).
+
+## Tests
+
+```sh
+deno task test        # unit + e2e against the deployed site — run after each deployment
+deno task test:unit   # pure logic only
+```
 
 ## Status
 

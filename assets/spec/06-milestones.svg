@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" font-family="system-ui, sans-serif">
+  <rect width="760" height="200" rx="10" fill="#f6f8fa"/>
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#333">Milestones</text>
+  <line x1="55" y1="110" x2="705" y2="110" stroke="#bbb" stroke-width="3"/>
+  <g text-anchor="middle">
+    <g>
+      <circle cx="90" cy="110" r="16" fill="#188038"/><text x="90" y="115" font-size="12" font-weight="700" fill="#fff">M1</text>
+      <text x="90" y="150" font-size="11" fill="#444">skeleton +</text><text x="90" y="164" font-size="11" fill="#444">deploy</text>
+    </g>
+    <g>
+      <circle cx="190" cy="110" r="16" fill="#188038"/><text x="190" y="115" font-size="12" font-weight="700" fill="#fff">M2</text>
+      <text x="190" y="150" font-size="11" fill="#444">Panoramax</text><text x="190" y="164" font-size="11" fill="#444">browsing</text>
+    </g>
+    <g>
+      <circle cx="290" cy="110" r="16" fill="#188038"/><text x="290" y="115" font-size="12" font-weight="700" fill="#fff">M3</text>
+      <text x="290" y="150" font-size="11" fill="#444">photosphere</text><text x="290" y="164" font-size="11" fill="#444">camera</text>
+    </g>
+    <g>
+      <circle cx="390" cy="110" r="16" fill="#ff6f00"/><text x="390" y="115" font-size="12" font-weight="700" fill="#fff">M4</text>
+      <text x="390" y="150" font-size="11" fill="#444">ground</text><text x="390" y="164" font-size="11" fill="#444">arrows</text>
+    </g>
+    <g>
+      <circle cx="490" cy="110" r="16" fill="#bbb"/><text x="490" y="115" font-size="12" font-weight="700" fill="#fff">M5</text>
+      <text x="490" y="150" font-size="11" fill="#444">smooth</text><text x="490" y="164" font-size="11" fill="#444">transitions</text>
+    </g>
+    <g>
+      <circle cx="590" cy="110" r="16" fill="#bbb"/><text x="590" y="115" font-size="12" font-weight="700" fill="#fff">M6</text>
+      <text x="590" y="150" font-size="11" fill="#444">vector/photo</text><text x="590" y="164" font-size="11" fill="#444">mixing</text>
+    </g>
+    <g>
+      <circle cx="690" cy="110" r="16" fill="#bbb"/><text x="690" y="115" font-size="12" font-weight="700" fill="#fff">M7</text>
+      <text x="690" y="150" font-size="11" fill="#444">control</text><text x="690" y="164" font-size="11" fill="#444">parity</text>
+    </g>
+  </g>
+  <text x="380" y="60" text-anchor="middle" font-size="11" fill="#666">each milestone = one issue, one PR, tests, deployed</text>
+</svg>

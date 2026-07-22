@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 180" font-family="system-ui, sans-serif">
+  <rect width="760" height="180" rx="10" fill="#f6f8fa"/>
+  <text x="380" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#333">Open questions</text>
+  <g font-size="12" fill="#444">
+    <g>
+      <circle cx="80" cy="75" r="14" fill="#fff3e0" stroke="#ff6f00" stroke-width="2"/>
+      <text x="80" y="80" text-anchor="middle" font-weight="700" fill="#b34c00">?</text>
+      <text x="105" y="72">Default Panoramax instance and</text>
+      <text x="105" y="88">federation / instance selection</text>
+    </g>
+    <g>
+      <circle cx="420" cy="75" r="14" fill="#e8f0fe" stroke="#2962ff" stroke-width="2"/>
+      <text x="420" y="80" text-anchor="middle" font-weight="700" fill="#1a44b8">?</text>
+      <text x="445" y="72">Public vector tile endpoint:</text>
+      <text x="445" y="88">usage policy, keys</text>
+    </g>
+    <g>
+      <circle cx="80" cy="135" r="14" fill="#ede7f6" stroke="#5e35b1" stroke-width="2"/>
+      <text x="80" y="140" text-anchor="middle" font-weight="700" fill="#4527a0">?</text>
+      <text x="105" y="132">Depth estimation for transitions and</text>
+      <text x="105" y="148">arrow placement (no depth data)</text>
+    </g>
+    <g>
+      <circle cx="420" cy="135" r="14" fill="#e6f4ea" stroke="#188038" stroke-width="2"/>
+      <text x="420" y="140" text-anchor="middle" font-weight="700" fill="#0d5c26">?</text>
+      <text x="445" y="132">Vector/photo alignment limits with</text>
+      <text x="445" y="148">crowdsourced GPS + heading noise</text>
+    </g>
+  </g>
+</svg>

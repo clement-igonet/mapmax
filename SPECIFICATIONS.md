@@ -4,6 +4,8 @@ Immersive street-level navigation built from [Panoramax](https://panoramax.fr) i
 
 ## 1. Vision
 
+![Vision](assets/spec/01-vision.svg)
+
 Provide a Google-Street-View-like experience on top of open data only:
 
 - **Photos**: Panoramax (federated, open-licensed street-level imagery).
@@ -13,6 +15,8 @@ Provide a Google-Street-View-like experience on top of open data only:
 The user navigates the world at street level, from photosphere to photosphere, with the vector map (ground, buildings) blended into the photographic view.
 
 ## 2. Core requirements
+
+![Core requirements](assets/spec/02-core.svg)
 
 ### 2.1 Photosphere rendering in MapLibre
 
@@ -56,6 +60,8 @@ The user navigates the world at street level, from photosphere to photosphere, w
 
 ## 3. Data sources
 
+![Data sources](assets/spec/03-data.svg)
+
 | Data | Source | Notes |
 |---|---|---|
 | 360°/flat pictures + metadata | Panoramax API (STAC-based) | position, heading, sequence links, tiled/derivate image URLs; federated instances (panoramax.openstreetmap.fr, IGN, …) |
@@ -65,19 +71,26 @@ No scraping, no re-hosting of imagery: pictures are fetched directly from Panora
 
 ## 4. Architecture constraints
 
+![Architecture constraints](assets/spec/04-architecture.svg)
+
 - **Front-end only.** No backend of ours, no database of ours. Everything runs in the browser against public APIs (Panoramax, vector tiles).
 - Static site, deployable as plain files.
 - Stack (proposed): TypeScript + Vite + MapLibre GL JS; WebGL for the photosphere (MapLibre custom layer, possibly Three.js inside it).
 
 ## 5. Project workflow
 
+![Project workflow](assets/spec/05-workflow.svg)
+
 - **Repository**: dedicated GitHub repository under the `clement-igonet` account (`clement-igonet/mapmax`), public.
 - **Issues & PRs**: every issue, improvement, expectation and its solution/implementation is tracked as a GitHub Issue and resolved through a Pull Request referencing it. No direct pushes of feature work to `main` once the skeleton exists.
 - **Continuous deployment**: GitHub Pages. Every merge to `main` is deployed automatically.
   - Phase 1: Pages "deploy from branch" (static files at repo root or `/docs`).
   - Phase 2: GitHub Actions workflow building the Vite app and publishing to Pages (requires a token/permissions with `workflow` scope).
+- **Tests** ([RULES.md](RULES.md) R1): each issue exposes a unit or end-to-end test; the whole suite (`deno task test`) is run after each deployment against the live site.
 
 ## 6. Milestones
+
+![Milestones](assets/spec/06-milestones.svg)
 
 1. **M1 — Skeleton & deployment**: repo, static page, MapLibre map with OSM vector style + 3D buildings, deployed on GitHub Pages.
 2. **M2 — Panoramax browsing**: query Panoramax API around a location, show picture positions/sequences on the map.
@@ -89,12 +102,16 @@ No scraping, no re-hosting of imagery: pictures are fetched directly from Panora
 
 ## 7. Non-goals (for now)
 
+![Non-goals (for now)](assets/spec/07-nongoals.svg)
+
 - No user accounts, no picture upload/contribution flow.
 - No own backend, storage or database.
 - No mobile native app (responsive web only).
 - No routing/turn-by-turn navigation.
 
 ## 8. Open questions
+
+![Open questions](assets/spec/08-questions.svg)
 
 - Which Panoramax instance(s) to use by default, and how to handle federation/instance selection.
 - Choice of the public vector tile endpoint (usage policy, keys) for OSM ground + buildings.
