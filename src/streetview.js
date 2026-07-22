@@ -1,7 +1,14 @@
 // Street-view mode: camera at human eye height at the picture position,
 // Google-Street-View-like look-around controls, entry/exit lifecycle.
-import { addPhotosphereLayer, showPicture, hidePhotosphere, nudgeYawOffset } from './photosphere.js';
+import {
+  addPhotosphereLayer,
+  hidePhotosphere,
+  nudgeYawOffset,
+  showPicture,
+  transitionToPicture,
+} from './photosphere.js';
 import { clamp, zoomForEyeHeight } from './geo.js';
+import { easeInOutCubic, transitionPlan } from './transition.js';
 
 const EYE_HEIGHT_M = 1.7; // human sight (SPECIFICATIONS.md §2.2)
 const STREET_PITCH = 85;
@@ -55,16 +62,31 @@ export async function enterStreetView(map, pic) {
     state.active = true;
     document.body.classList.add('street-mode');
   }
+  const from = state.pic;
   state.pic = pic;
-
   const zoom = zoomForEyeHeight(map.transform.height, map.transform.fov, pic.lat, STREET_PITCH, EYE_HEIGHT_M);
-  map.jumpTo({
-    center: [pic.lon, pic.lat],
-    zoom,
-    pitch: STREET_PITCH,
-    bearing: pic.heading,
-  });
-  await showPicture(pic);
+
+  if (from && from.id !== pic.id) {
+    // Continuous movement to a nearby picture (SPECIFICATIONS.md §2.4): the
+    // map camera glides while the spheres cross-fade; the view direction is
+    // kept (Street-View behavior), only the position changes.
+    const plan = transitionPlan(from, pic);
+    map.easeTo({
+      center: [pic.lon, pic.lat],
+      zoom,
+      duration: plan.duration,
+      easing: easeInOutCubic,
+    });
+    await transitionToPicture(pic, plan);
+  } else {
+    map.jumpTo({
+      center: [pic.lon, pic.lat],
+      zoom,
+      pitch: STREET_PITCH,
+      bearing: pic.heading,
+    });
+    await showPicture(pic);
+  }
   emitPictureChanged(pic);
   return pic;
 }
