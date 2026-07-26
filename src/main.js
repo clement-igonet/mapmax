@@ -3,8 +3,8 @@
 import * as maplibregl from 'maplibre-gl';
 import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { enterStreetView, exitStreetView, isStreetMode, setBlend } from './streetview.js';
-import { sliderToBlend } from './target.js';
+import { enterStreetView, exitStreetView, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
+import { formatPicInfo, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
@@ -42,6 +42,13 @@ map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
 setupNavigation(map);
 setupControls(map);
 setupMinimap(map);
+
+// Show the current picture's info (id, type, author) in the page (#34).
+const picInfo = document.getElementById('pic-info');
+onPictureChanged((pic) => {
+  picInfo.textContent = formatPicInfo(pic);
+  picInfo.hidden = !pic;
+});
 
 map.on('style.load', () => {
   ensureBuildings3D();

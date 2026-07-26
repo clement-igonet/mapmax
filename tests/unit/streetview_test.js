@@ -1,6 +1,6 @@
 // Unit tests for the picture → photosphere-plugin target mapping (plugin adoption).
-import { assertEquals } from 'jsr:@std/assert@1';
-import { pictureToTarget } from '../../src/target.js';
+import { assert, assertEquals } from 'jsr:@std/assert@1';
+import { formatPicInfo, pictureToTarget } from '../../src/target.js';
 
 const pic = {
   lon: 2.325,
@@ -27,4 +27,16 @@ Deno.test('pictureToTarget: falls back through sd → thumb, heading defaults to
     imageUrl: 't.jpg',
     bearing: 0,
   });
+});
+
+Deno.test('formatPicInfo: shows the full id, type and author (#34)', () => {
+  const s = formatPicInfo({ id: '5914cdbb-36a9-4e91-8527-fbebcf96d8d4', type: 'equirectangular', producer: 'Britzz' });
+  assert(s.includes('5914cdbb-36a9-4e91-8527-fbebcf96d8d4'), 'must contain the full id');
+  assert(s.includes('equirectangular'));
+  assert(s.includes('Britzz'));
+});
+
+Deno.test('formatPicInfo: empty for no picture; omits author when absent', () => {
+  assertEquals(formatPicInfo(null), '');
+  assertEquals(formatPicInfo({ id: 'x', type: 'flat' }), 'flat · id x');
 });
