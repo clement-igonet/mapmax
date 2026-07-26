@@ -9,9 +9,9 @@ Deno.test('deployed page is served and wires the app (issue #1)', async () => {
   const res = await fetch(`${BASE}/index.html`);
   assertEquals(res.status, 200);
   const html = await res.text();
-  assert(html.includes('maplibre-gl'), 'maplibre script missing');
+  assert(html.includes('maplibre-gl@6'), 'MapLibre 6 not referenced (issue #19)');
+  assert(html.includes('maplibre-gl.mjs'), 'ESM maplibre importmap missing (issue #19)');
   assert(html.includes('src/main.js'), 'app module missing');
-  assert(html.includes('importmap'), 'three importmap missing (issue #3)');
   assert(html.includes('exit-street'), 'street exit button missing (issue #3)');
   assert(html.includes('rel="icon"'), 'favicon missing (issue #14)');
 });
@@ -23,11 +23,15 @@ Deno.test('deployed app hardens style against console errors (issue #14)', async
 });
 
 Deno.test('deployed JS modules are served', async () => {
-  for (const mod of ['config', 'main', 'geo', 'panoramax', 'photosphere', 'streetview']) {
+  const mods = ['config', 'main', 'geo', 'panoramax', 'streetview', 'navigation', 'arrows', 'stylefix'];
+  for (const mod of mods) {
     const res = await fetch(`${BASE}/src/${mod}.js`);
     assertEquals(res.status, 200, `src/${mod}.js not deployed`);
     await res.body?.cancel();
   }
+  const plugin = await fetch(`${BASE}/src/vendor/photosphere-plugin.js`);
+  assertEquals(plugin.status, 200, 'vendored photosphere plugin not deployed');
+  await plugin.body?.cancel();
 });
 
 Deno.test('OSM style has fill-extrusion 3D buildings (issue #1)', async () => {
@@ -49,6 +53,17 @@ Deno.test('Panoramax vector tiles respond (issue #2)', async () => {
   const res = await fetch('https://api.panoramax.xyz/api/map/14/8297/5637.mvt');
   assertEquals(res.status, 200);
   await res.body?.cancel();
+});
+
+Deno.test('Panoramax sequence returns ordered panoramas (plugin adoption)', async () => {
+  const { getSequence } = await import('../../src/panoramax.js');
+  const seq = await getSequence('a5dc43dc-d62e-457b-ad15-822bd7ced0db', 20);
+  assert(seq.length > 1, 'expected a multi-picture sequence');
+  // ranks are non-decreasing after the sort
+  for (let i = 1; i < seq.length; i++) {
+    assert((seq[i].rankInSequence ?? 0) >= (seq[i - 1].rankInSequence ?? 0), 'sequence not ordered');
+  }
+  assert(seq.some((p) => p.type === 'equirectangular'), 'no 360 panorama in sample sequence');
 });
 
 Deno.test('real Paris data yields navigation arrows (issue #4)', async () => {

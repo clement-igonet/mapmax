@@ -14,4 +14,18 @@ export const START_VIEW = {
   bearing: 0,
 };
 
-export const MAX_PITCH = 85;
+// Base map pitch limit (map mode). Street mode raises it so the photosphere
+// plugin can sit the camera at pitch ~90 (human sight) — see streetview.js.
+export const MAP_MAX_PITCH = 85;
+export const STREET_MAX_PITCH = 179;
+
+// Photosphere plugin defaults (SPECIFICATIONS.md §2.2, §2.5).
+export const PHOTOSPHERE = {
+  eyeHeight: 1.6,
+  radius: 6,
+  fov: 75,
+  durationMs: 1200,
+  dragSensitivity: 0.15,
+  minPitch: -85,
+  maxPitch: 85,
+};
