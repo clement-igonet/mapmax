@@ -1,7 +1,7 @@
 // Unit tests for navigation arrow selection (issue #4).
 import { assert, assertAlmostEquals, assertEquals } from 'jsr:@std/assert@1';
-import { arrowGlyphPoints, arrowsToGeoJSON, pickArrows } from '../../src/arrows.js';
-import { destinationPoint, distanceM } from '../../src/geo.js';
+import { arrowsToGeoJSON, groundArrowPolygon, pickArrows } from '../../src/arrows.js';
+import { bearingBetween, destinationPoint, distanceM } from '../../src/geo.js';
 
 const cur = { id: 'me', lon: 2.35, lat: 48.85, sequenceId: 'seq-A' };
 const at = (id, bearing, dist, sequenceId = 'seq-A') => {
@@ -45,26 +45,30 @@ Deno.test('pickArrows: close target pulls the arrow closer than default', () => 
   assertAlmostEquals(distanceM(cur.lon, cur.lat, a.lon, a.lat), 2.4, 0.05);
 });
 
-Deno.test('arrowGlyphPoints stay within the padded box (never clipped) — #26', () => {
-  for (const [size, pad] of [[128, 14], [96, 10], [64, 8]]) {
-    for (const [x, y] of arrowGlyphPoints(size, pad)) {
-      assert(x >= pad - 1e-9 && x <= size - pad + 1e-9, `x ${x} out of [${pad}, ${size - pad}]`);
-      assert(y >= pad - 1e-9 && y <= size - pad + 1e-9, `y ${y} out of [${pad}, ${size - pad}]`);
-    }
+Deno.test('groundArrowPolygon: real ground geometry, closed ring, tip points along bearing (#26)', () => {
+  const poly = groundArrowPolygon(2.35, 48.85, 37, 1);
+  assertEquals(poly.length, 1); // one ring
+  const ring = poly[0];
+  assertEquals(ring.length, 8); // 7 shape points + closing point
+  assertEquals(ring[0], ring[ring.length - 1], 'ring must be closed');
+  // tip (first vertex) lies along the bearing from the anchor
+  assertAlmostEquals(bearingBetween(2.35, 48.85, ring[0][0], ring[0][1]), 37, 0.5);
+  // every vertex is within a few metres of the anchor (a small ground arrow)
+  for (const [lon, lat] of ring) {
+    assert(distanceM(2.35, 48.85, lon, lat) <= 2.3, 'arrow vertex too far from anchor');
   }
 });
 
-Deno.test('arrowGlyphPoints: chevron is centered and points up', () => {
-  const [tip, right, notch, left] = arrowGlyphPoints(128, 14);
-  assertEquals(tip[0], 64); // centered horizontally
-  assert(tip[1] < notch[1], 'tip above the notch (points up)');
-  assertEquals(left[0], 128 - right[0]); // symmetric wings
-  assertEquals(left[1], right[1]);
+Deno.test('groundArrowPolygon: scale grows the arrow', () => {
+  const near = groundArrowPolygon(2.35, 48.85, 0, 1)[0][0];
+  const far = groundArrowPolygon(2.35, 48.85, 0, 2)[0][0];
+  assert(distanceM(2.35, 48.85, far[0], far[1]) > distanceM(2.35, 48.85, near[0], near[1]));
 });
 
-Deno.test('arrowsToGeoJSON emits clickable features', () => {
+Deno.test('arrowsToGeoJSON emits clickable ground polygons', () => {
   const fc = arrowsToGeoJSON(pickArrows(cur, [at('t', 0, 10)]));
   assertEquals(fc.type, 'FeatureCollection');
+  assertEquals(fc.features[0].geometry.type, 'Polygon');
   assertEquals(fc.features[0].properties.targetId, 't');
   assertEquals(typeof fc.features[0].properties.bearing, 'number');
 });

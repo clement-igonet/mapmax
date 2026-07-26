@@ -57,6 +57,15 @@ Deno.test('destinationPoint round-trips with bearing and distance', () => {
   assertAlmostEquals(bearingBetween(2.35, 48.85, lon, lat), 37, 0.01);
 });
 
+Deno.test('isDragGesture: distinguishes a tap from a drag (#32)', async () => {
+  const { isDragGesture } = await import('../../src/geo.js');
+  assertEquals(isDragGesture(100, 100, 102, 101), false); // ~2px → tap
+  assertEquals(isDragGesture(100, 100, 140, 100), true); // 40px → drag
+  assertEquals(isDragGesture(100, 100, 100, 100), false); // no move
+  assertEquals(isDragGesture(0, 0, 5, 0, 10), false); // below custom threshold
+  assertEquals(isDragGesture(0, 0, 20, 0, 10), true); // above custom threshold
+});
+
 Deno.test('angularDiff: wraps across north', () => {
   assertAlmostEquals(angularDiff(350, 10), -20, 1e-9);
   assertAlmostEquals(angularDiff(10, 350), 20, 1e-9);

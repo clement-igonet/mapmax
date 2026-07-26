@@ -117,10 +117,19 @@ export class Photosphere {
         this._layerCtx = null;
 
         this._layer = this._createLayer();
-        if (map.style && map.loaded()) {
-            map.addLayer(this._layer);
+        // MapLibre 6's internal `map.style` is not a truthy public property, so
+        // the old `map.style && map.loaded()` guard fell through to a 'load'
+        // listener that never fires when the style is already loaded — leaving
+        // the custom layer unadded (onAdd never runs, textures never load).
+        // Use the public isStyleLoaded() and add immediately when ready.
+        const addLayer = () => {
+            if (!map.getLayer(this._layer.id)) map.addLayer(this._layer);
+        };
+        if (map.isStyleLoaded()) {
+            addLayer();
         } else {
-            map.on('load', () => map.addLayer(this._layer));
+            map.once('load', addLayer);
+            map.once('styledata', addLayer);
         }
 
         this._pinchDist = 0;
