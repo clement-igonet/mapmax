@@ -1,5 +1,5 @@
 // Navigation arrows on the street surface: click one to move to that picture.
-import { arrowsToGeoJSON, chooseByHeading, pickArrows } from './arrows.js';
+import { arrowGlyphPoints, arrowsToGeoJSON, chooseByHeading, pickArrows } from './arrows.js';
 import { distanceM } from './geo.js';
 import { getPicture, searchNearby } from './panoramax.js';
 import { currentPicture, enterStreetView, onPictureChanged } from './streetview.js';
@@ -92,9 +92,11 @@ function ensureLayer(map) {
         'icon-rotate': ['get', 'bearing'],
         'icon-rotation-alignment': 'map',
         'icon-pitch-alignment': 'map',
+        'icon-anchor': 'center',
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 17, 0.6, 22, 1.4],
+        // Clamp with min/max so the glyph never blows up at street-level zoom (#26).
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 17, 0.35, 20, 0.6, 22, 0.6],
       },
       paint: {
         'icon-opacity': ['case', ['get', 'sameSequence'], 0.95, 0.75],
@@ -103,23 +105,24 @@ function ensureLayer(map) {
   }
 }
 
-// White chevron with a dark outline, drawn pointing north (up) so that
+// White chevron with a dark outline, centered with padding so it is never
+// clipped by its own icon bounds (#26). Drawn pointing north (up) so that
 // icon-rotate can take the target bearing directly.
 function makeArrowImage() {
-  const size = 96;
+  const size = 128;
+  const pad = 14;
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const ctx = c.getContext('2d');
   ctx.lineJoin = 'round';
+  const pts = arrowGlyphPoints(size, pad);
   ctx.beginPath();
-  ctx.moveTo(48, 10);
-  ctx.lineTo(84, 62);
-  ctx.lineTo(48, 46);
-  ctx.lineTo(12, 62);
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
   ctx.closePath();
   ctx.fillStyle = 'rgba(255,255,255,0.95)';
   ctx.strokeStyle = 'rgba(20,40,90,0.9)';
-  ctx.lineWidth = 6;
+  ctx.lineWidth = 7;
   ctx.stroke();
   ctx.fill();
   return ctx.getImageData(0, 0, size, size);

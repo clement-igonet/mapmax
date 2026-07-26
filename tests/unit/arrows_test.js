@@ -1,6 +1,6 @@
 // Unit tests for navigation arrow selection (issue #4).
 import { assert, assertAlmostEquals, assertEquals } from 'jsr:@std/assert@1';
-import { arrowsToGeoJSON, pickArrows } from '../../src/arrows.js';
+import { arrowGlyphPoints, arrowsToGeoJSON, pickArrows } from '../../src/arrows.js';
 import { destinationPoint, distanceM } from '../../src/geo.js';
 
 const cur = { id: 'me', lon: 2.35, lat: 48.85, sequenceId: 'seq-A' };
@@ -43,6 +43,23 @@ Deno.test('pickArrows: arrow lies on the ground toward the target, near the came
 Deno.test('pickArrows: close target pulls the arrow closer than default', () => {
   const [a] = pickArrows(cur, [at('t', 90, 4)]);
   assertAlmostEquals(distanceM(cur.lon, cur.lat, a.lon, a.lat), 2.4, 0.05);
+});
+
+Deno.test('arrowGlyphPoints stay within the padded box (never clipped) — #26', () => {
+  for (const [size, pad] of [[128, 14], [96, 10], [64, 8]]) {
+    for (const [x, y] of arrowGlyphPoints(size, pad)) {
+      assert(x >= pad - 1e-9 && x <= size - pad + 1e-9, `x ${x} out of [${pad}, ${size - pad}]`);
+      assert(y >= pad - 1e-9 && y <= size - pad + 1e-9, `y ${y} out of [${pad}, ${size - pad}]`);
+    }
+  }
+});
+
+Deno.test('arrowGlyphPoints: chevron is centered and points up', () => {
+  const [tip, right, notch, left] = arrowGlyphPoints(128, 14);
+  assertEquals(tip[0], 64); // centered horizontally
+  assert(tip[1] < notch[1], 'tip above the notch (points up)');
+  assertEquals(left[0], 128 - right[0]); // symmetric wings
+  assertEquals(left[1], right[1]);
 });
 
 Deno.test('arrowsToGeoJSON emits clickable features', () => {

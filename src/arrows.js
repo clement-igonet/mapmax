@@ -61,6 +61,24 @@ export function chooseByHeading(arrows, headingDeg, maxDiff = 55) {
   return best && bestDiff <= maxDiff ? best : null;
 }
 
+// Chevron polygon for the ground navigation arrow, centered in a `size`×`size`
+// icon with a clear `pad` margin so it never touches (and so is never clipped
+// by) the icon's own bounds (#26). Tip points up (-y); returns [tip, right,
+// notch, left] in pixel coords.
+export function arrowGlyphPoints(size = 128, pad = 14) {
+  const cx = size / 2;
+  const top = pad;
+  const bottom = size - pad;
+  const notchY = top + (bottom - top) * 0.62;
+  const halfW = size / 2 - pad;
+  return [
+    [cx, top],
+    [cx + halfW, bottom],
+    [cx, notchY],
+    [cx - halfW, bottom],
+  ];
+}
+
 export function arrowsToGeoJSON(arrows) {
   return {
     type: 'FeatureCollection',
