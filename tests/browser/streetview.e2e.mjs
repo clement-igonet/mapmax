@@ -63,12 +63,23 @@ const nav = await page.evaluate(async () => {
   const tiled = tiledLayerIds(map.getStyle());
   const hiddenInside = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') === 'none').length;
+  // #6 blend: drag to mixed → vector layers come back; back to photo → suspended.
+  const { sliderToBlend } = await import('./src/target.js');
+  sv.setBlend(sliderToBlend(50));
+  const visibleAtMixed = tiled.filter((id) => map.getLayer(id) &&
+    map.getLayoutProperty(id, 'visibility') !== 'none').length;
+  sv.setBlend(sliderToBlend(100));
+  const hiddenBackToPhoto = tiled.filter((id) => map.getLayer(id) &&
+    map.getLayoutProperty(id, 'visibility') === 'none').length;
+  const blendInside = sv._photosphere()?._blend;
+  sv.setBlend(sliderToBlend(50)); // leave mixed to check restore path on exit
   sv.exitStreetView();
   await waitFor(() => !sv.isStreetMode(), 8000);
   const visibleAfter = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
   return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode,
-           tiledCount: tiled.length, hiddenInside, visibleAfter };
+           tiledCount: tiled.length, hiddenInside, visibleAfter,
+           visibleAtMixed, hiddenBackToPhoto, blendInside };
 });
 if (nav.skipped) {
   console.log('[e2e] WARN: no panorama fetched from sample sequence — enter/exit not exercised');
@@ -79,7 +90,10 @@ if (nav.skipped) {
   assert.ok(nav.tiledCount > 0, 'expected some tiled layers');
   assert.equal(nav.hiddenInside, nav.tiledCount, `tiled layers not suspended inside (#11): ${nav.hiddenInside}/${nav.tiledCount}`);
   assert.equal(nav.visibleAfter, nav.tiledCount, 'tiled layers not restored after exit (#11)');
-  console.log(`[e2e] photosphere enter/exit OK; tile budget: ${nav.hiddenInside}/${nav.tiledCount} suspended inside, restored on exit`);
+  assert.equal(nav.visibleAtMixed, nav.tiledCount, `blend 50% did not reveal vector layers (#6)`);
+  assert.equal(nav.hiddenBackToPhoto, nav.tiledCount, `blend 100% did not re-suspend tiles (#6)`);
+  assert.equal(nav.blendInside, 1, 'blend 100% should set photo opacity to 1 (#6)');
+  console.log(`[e2e] photosphere enter/exit OK; tile budget ${nav.hiddenInside}/${nav.tiledCount}; blend reveal/suspend OK`);
 }
 
 // Console must stay clean (#14).

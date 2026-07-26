@@ -15,6 +15,11 @@
       <div id="hud-status">Loading map…</div>
     </div>
     <button type="button" id="exit-street" title="Back to map (Esc)" hidden>✕ Map</button>
+    <div id="blend-control" hidden>
+      <label for="blend">Photo ↔ Vector</label>
+      <input type="range" id="blend" min="0" max="100" value="100" step="1"
+             aria-label="Blend photo and vector layers">
+    </div>
     <!-- MapLibre GL JS 6 is ESM-only; resolved (with the plugin's peer) via importmap. -->
     <script type="importmap">
       {"imports": {"maplibre-gl": "https://unpkg.com/maplibre-gl@6.0.0/dist/maplibre-gl.mjs"}}

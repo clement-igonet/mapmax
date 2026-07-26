@@ -68,6 +68,15 @@ export function enterStreetView(map, pic) {
   return pic;
 }
 
+// Vector/photo blend (#6): alpha 1 = photo only (tiles suspended for #11),
+// alpha < 1 reveals the vector layers behind the semi-transparent photo.
+export function setBlend(alpha) {
+  if (!photosphere || !svMap) return;
+  photosphere.blend(alpha);
+  if (alpha >= 0.99) suspendTileLayers(svMap);
+  else resumeTileLayers(svMap);
+}
+
 export function exitStreetView() {
   if (!photosphere) return;
   // Restore tiled layers before the exit animation so the map is there to

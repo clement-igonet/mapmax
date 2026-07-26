@@ -53,6 +53,27 @@ body {
   background: rgba(50, 50, 60, 0.95);
 }
 
+#blend-control {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  background: rgba(20, 20, 24, 0.85);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#blend-control input[type='range'] {
+  width: 200px;
+}
+
 body.street-mode #map canvas {
   cursor: grab;
 }
