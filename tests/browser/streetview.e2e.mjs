@@ -59,9 +59,16 @@ const nav = await page.evaluate(async () => {
   await waitFor(() => sv._photosphere()?.mode === 'inside', 10000);
   const enteredMode = sv._photosphere()?.mode;
   const inStreet = sv.isStreetMode();
+  const { tiledLayerIds } = await import('./src/tilebudget.js');
+  const tiled = tiledLayerIds(map.getStyle());
+  const hiddenInside = tiled.filter((id) => map.getLayer(id) &&
+    map.getLayoutProperty(id, 'visibility') === 'none').length;
   sv.exitStreetView();
   await waitFor(() => !sv.isStreetMode(), 8000);
-  return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode };
+  const visibleAfter = tiled.filter((id) => map.getLayer(id) &&
+    map.getLayoutProperty(id, 'visibility') !== 'none').length;
+  return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode,
+           tiledCount: tiled.length, hiddenInside, visibleAfter };
 });
 if (nav.skipped) {
   console.log('[e2e] WARN: no panorama fetched from sample sequence — enter/exit not exercised');
@@ -69,7 +76,10 @@ if (nav.skipped) {
   assert.ok(nav.inStreet, 'photosphere did not enter street mode');
   assert.ok(['entering', 'inside'].includes(nav.enteredMode), `unexpected mode ${nav.enteredMode}`);
   assert.equal(nav.exitedMode, 'outside', 'photosphere did not exit back to map');
-  console.log('[e2e] photosphere enter/exit OK');
+  assert.ok(nav.tiledCount > 0, 'expected some tiled layers');
+  assert.equal(nav.hiddenInside, nav.tiledCount, `tiled layers not suspended inside (#11): ${nav.hiddenInside}/${nav.tiledCount}`);
+  assert.equal(nav.visibleAfter, nav.tiledCount, 'tiled layers not restored after exit (#11)');
+  console.log(`[e2e] photosphere enter/exit OK; tile budget: ${nav.hiddenInside}/${nav.tiledCount} suspended inside, restored on exit`);
 }
 
 // Console must stay clean (#14).

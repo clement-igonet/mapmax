@@ -4,10 +4,12 @@
 import { Photosphere } from './vendor/photosphere-plugin.js';
 import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH } from './config.js';
 import { pictureToTarget } from './target.js';
+import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 
 export { pictureToTarget };
 
 let photosphere = null;
+let svMap = null;
 let current = null;
 let pendingExit = false;
 const listeners = [];
@@ -24,6 +26,7 @@ const emit = (pic) => {
 // Enter street view at `pic` (first click) or walk to it (already inside).
 export function enterStreetView(map, pic) {
   current = pic;
+  svMap = map;
 
   if (!photosphere) {
     const entry = pictureToTarget(pic, true);
@@ -34,6 +37,9 @@ export function enterStreetView(map, pic) {
       exitView: { center: entry.lngLat, zoom: 17, pitch: 45, bearing: 0 },
       onEnter: () => {
         document.body.classList.add('street-mode');
+        // Stop the pitch-90 tile-loading explosion: the sphere hides the map,
+        // so suspend all tiled layers while inside (#11).
+        suspendTileLayers(map);
         // Honor an exit requested during the enter animation (e.g. Esc mid-entry).
         if (pendingExit) {
           pendingExit = false;
@@ -64,6 +70,9 @@ export function enterStreetView(map, pic) {
 
 export function exitStreetView() {
   if (!photosphere) return;
+  // Restore tiled layers before the exit animation so the map is there to
+  // animate back onto (#11).
+  resumeTileLayers(svMap);
   if (photosphere.mode === 'inside') photosphere.exit();
   else if (photosphere.mode === 'entering') pendingExit = true; // exit once entered
 }
