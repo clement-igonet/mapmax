@@ -111,6 +111,7 @@ export class Photosphere {
         this._lookTargetDistanceMetres = 1;
         this._opacity = 0;
         this._blend = 1; // steady-state opacity while inside (1 = photo only)
+        this._savedFov = null; // map's vertical FOV before entering
         this._sphereCenterOffset = [0, 0, 0];
         this._gl = null;
         this._layerCtx = null;
@@ -170,7 +171,23 @@ export class Photosphere {
     // Field-of-view zoom (degrees), clamped — scroll wheel / pinch (mapmax #7).
     zoomFov(deltaDeg) {
         this._options.fov = Math.max(25, Math.min(100, this._options.fov + deltaDeg));
+        this._applyMapFov();
+        if (this._mode === 'inside') {
+            this._recalibrateLookTargetDistance();
+            this._updateCameraWhileInside();
+        }
         this._map.triggerRepaint();
+    }
+
+    // Keep MapLibre's vertical FOV equal to the sphere shader's FOV so the photo
+    // and the vector layers move at the same rate — no desync (mapmax #24).
+    _applyMapFov() {
+        const map = this._map;
+        if (typeof map.setVerticalFieldOfView === 'function') {
+            map.setVerticalFieldOfView(this._options.fov);
+        } else if (map.transform) {
+            map.transform.fov = this._options.fov;
+        }
     }
 
     // Enter the photosphere. Optional target = {lngLat, imageUrl, bearing}
@@ -190,6 +207,12 @@ export class Photosphere {
         for (const handler of this._interactionHandlers()) {
             handler.disable();
         }
+        // Match the map's vertical FOV to the sphere's so photo and vector move
+        // together (mapmax #24). Do it before recalibrating (which reads the fov).
+        if (typeof this._map.getVerticalFieldOfView === 'function') {
+            this._savedFov = this._map.getVerticalFieldOfView();
+        }
+        this._applyMapFov();
         // Start looking toward the picture's heading, if provided.
         this._yawDeg = target && typeof target.bearing === 'number' ? target.bearing : 0;
         this._pitchDeg = 0;
@@ -231,6 +254,11 @@ export class Photosphere {
         };
         this._animate(view, 0, 0, () => {
             this._mode = 'outside';
+            // Restore the map's original vertical FOV (mapmax #24).
+            if (this._savedFov != null && typeof this._map.setVerticalFieldOfView === 'function') {
+                this._map.setVerticalFieldOfView(this._savedFov);
+                this._savedFov = null;
+            }
             for (const handler of this._interactionHandlers()) {
                 handler.enable();
             }

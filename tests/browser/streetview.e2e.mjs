@@ -59,6 +59,8 @@ const nav = await page.evaluate(async () => {
   await waitFor(() => sv._photosphere()?.mode === 'inside', 10000);
   const enteredMode = sv._photosphere()?.mode;
   const inStreet = sv.isStreetMode();
+  // #24: map vertical FOV must equal the sphere's FOV (photo/vector in sync).
+  const fovSyncEnter = Math.abs(map.getVerticalFieldOfView() - sv._photosphere()._options.fov) < 0.01;
   const { tiledLayerIds } = await import('./src/tilebudget.js');
   const tiled = tiledLayerIds(map.getStyle());
   const hiddenInside = tiled.filter((id) => map.getLayer(id) &&
@@ -80,6 +82,7 @@ const nav = await page.evaluate(async () => {
   const fov0 = ps._options.fov;
   window.dispatchEvent(new KeyboardEvent('keydown', { key: '-' }));
   const fovChanged = ps._options.fov !== fov0;
+  const fovSyncAfterZoom = Math.abs(map.getVerticalFieldOfView() - ps._options.fov) < 0.01;
   const minimapShown = !document.getElementById('minimap').hidden;
   sv.setBlend(sliderToBlend(50)); // leave mixed to check restore path on exit
   sv.exitStreetView();
@@ -89,7 +92,7 @@ const nav = await page.evaluate(async () => {
   return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode,
            tiledCount: tiled.length, hiddenInside, visibleAfter,
            visibleAtMixed, hiddenBackToPhoto, blendInside,
-           yawChanged, fovChanged, minimapShown };
+           yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom };
 });
 if (nav.skipped) {
   console.log('[e2e] WARN: no panorama fetched from sample sequence — enter/exit not exercised');
@@ -106,7 +109,9 @@ if (nav.skipped) {
   assert.ok(nav.yawChanged, 'keyboard look did not change yaw (#7)');
   assert.ok(nav.fovChanged, 'keyboard FOV zoom did not change fov (#7)');
   assert.ok(nav.minimapShown, 'minimap not shown in street mode (#7)');
-  console.log(`[e2e] enter/exit OK; tile budget ${nav.hiddenInside}/${nav.tiledCount}; blend OK; controls (look/fov/minimap) OK`);
+  assert.ok(nav.fovSyncEnter, 'map FOV != sphere FOV on enter — photo/vector desync (#24)');
+  assert.ok(nav.fovSyncAfterZoom, 'map FOV != sphere FOV after zoom — desync (#24)');
+  console.log(`[e2e] enter/exit OK; tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK; controls OK; FOV sync OK (#24)`);
 }
 
 // Console must stay clean (#14).
