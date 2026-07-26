@@ -72,6 +72,15 @@ const nav = await page.evaluate(async () => {
   const hiddenBackToPhoto = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') === 'none').length;
   const blendInside = sv._photosphere()?._blend;
+  // #7 controls: keyboard look changes yaw; FOV key changes fov; minimap shows.
+  const ps = sv._photosphere();
+  const yaw0 = ps.yaw;
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  const yawChanged = ps.yaw !== yaw0;
+  const fov0 = ps._options.fov;
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: '-' }));
+  const fovChanged = ps._options.fov !== fov0;
+  const minimapShown = !document.getElementById('minimap').hidden;
   sv.setBlend(sliderToBlend(50)); // leave mixed to check restore path on exit
   sv.exitStreetView();
   await waitFor(() => !sv.isStreetMode(), 8000);
@@ -79,7 +88,8 @@ const nav = await page.evaluate(async () => {
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
   return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode,
            tiledCount: tiled.length, hiddenInside, visibleAfter,
-           visibleAtMixed, hiddenBackToPhoto, blendInside };
+           visibleAtMixed, hiddenBackToPhoto, blendInside,
+           yawChanged, fovChanged, minimapShown };
 });
 if (nav.skipped) {
   console.log('[e2e] WARN: no panorama fetched from sample sequence — enter/exit not exercised');
@@ -93,7 +103,10 @@ if (nav.skipped) {
   assert.equal(nav.visibleAtMixed, nav.tiledCount, `blend 50% did not reveal vector layers (#6)`);
   assert.equal(nav.hiddenBackToPhoto, nav.tiledCount, `blend 100% did not re-suspend tiles (#6)`);
   assert.equal(nav.blendInside, 1, 'blend 100% should set photo opacity to 1 (#6)');
-  console.log(`[e2e] photosphere enter/exit OK; tile budget ${nav.hiddenInside}/${nav.tiledCount}; blend reveal/suspend OK`);
+  assert.ok(nav.yawChanged, 'keyboard look did not change yaw (#7)');
+  assert.ok(nav.fovChanged, 'keyboard FOV zoom did not change fov (#7)');
+  assert.ok(nav.minimapShown, 'minimap not shown in street mode (#7)');
+  console.log(`[e2e] enter/exit OK; tile budget ${nav.hiddenInside}/${nav.tiledCount}; blend OK; controls (look/fov/minimap) OK`);
 }
 
 // Console must stay clean (#14).

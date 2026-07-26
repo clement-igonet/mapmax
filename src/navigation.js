@@ -1,7 +1,8 @@
 // Navigation arrows on the street surface: click one to move to that picture.
-import { arrowsToGeoJSON, pickArrows } from './arrows.js';
+import { arrowsToGeoJSON, chooseByHeading, pickArrows } from './arrows.js';
+import { distanceM } from './geo.js';
 import { getPicture, searchNearby } from './panoramax.js';
-import { enterStreetView, onPictureChanged } from './streetview.js';
+import { currentPicture, enterStreetView, onPictureChanged } from './streetview.js';
 
 const SOURCE_ID = 'mapmax-nav-arrows';
 const LAYER_ID = 'mapmax-nav-arrows';
@@ -35,6 +36,34 @@ export async function navigateTo(map, pictureId) {
   const pic = await getPicture(pictureId);
   await enterStreetView(map, pic);
   return pic;
+}
+
+// Walk toward `headingDeg` (keyboard advance): pick the ground arrow best
+// aligned with where the user is looking and move to it (SPECIFICATIONS.md §2.5).
+export async function advance(map, headingDeg) {
+  const pic = currentPicture();
+  if (!pic) return null;
+  const candidates = await searchNearby(pic.lon, pic.lat, 35, 60);
+  const arrow = chooseByHeading(pickArrows(pic, candidates), headingDeg);
+  if (!arrow) return null;
+  return navigateTo(map, arrow.targetId);
+}
+
+// Jump to the picture nearest a clicked map point (double-click-to-go).
+export async function goToNearest(map, lngLat, maxMeters = 30) {
+  const [lon, lat] = Array.isArray(lngLat) ? lngLat : [lngLat.lng, lngLat.lat];
+  const candidates = await searchNearby(lon, lat, maxMeters, 40);
+  let best = null;
+  let bestD = Infinity;
+  for (const c of candidates) {
+    const d = distanceM(lon, lat, c.lon, c.lat);
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  if (!best) return null;
+  return enterStreetView(map, best);
 }
 
 async function refreshArrows(map, pic) {
