@@ -1,11 +1,14 @@
 // Navigation arrows on the street surface: click one to move to that picture.
 import { arrowGlyphPoints, arrowsToGeoJSON, chooseByHeading, pickArrows } from './arrows.js';
+import { STREET_POI_RADIUS_M } from './config.js';
 import { distanceM } from './geo.js';
 import { getPicture, searchNearby } from './panoramax.js';
 import { currentPicture, enterStreetView, onPictureChanged } from './streetview.js';
 
 const SOURCE_ID = 'mapmax-nav-arrows';
 const LAYER_ID = 'mapmax-nav-arrows';
+const POI_SOURCE_ID = 'mapmax-nearby-poi';
+const POI_LAYER_ID = 'mapmax-nearby-poi';
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
 let navigating = false;
@@ -68,17 +71,57 @@ export async function goToNearest(map, lngLat, maxMeters = 30) {
 
 async function refreshArrows(map, pic) {
   ensureLayer(map);
-  const candidates = await searchNearby(pic.lon, pic.lat, 35, 60);
-  const arrows = pickArrows(pic, candidates);
-  map.getSource(SOURCE_ID).setData(arrowsToGeoJSON(arrows));
+  // Only look within the street POI radius (#27): keeps the query light and the
+  // shown POIs nearby. Arrows and nearby dots come from the same fetch.
+  const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
+  map.getSource(SOURCE_ID).setData(arrowsToGeoJSON(pickArrows(pic, candidates)));
+  map.getSource(POI_SOURCE_ID).setData(nearbyPoiGeoJSON(pic, candidates));
+}
+
+// Nearby pictures within STREET_POI_RADIUS_M (excluding the current one), as a
+// bounded GeoJSON with fixed dot radius — replaces the unbounded vector-tile
+// POI layer while in street mode, so nothing far or oversized shows (#27).
+function nearbyPoiGeoJSON(current, candidates) {
+  return {
+    type: 'FeatureCollection',
+    features: candidates
+      .filter((c) => c.id !== current.id &&
+        distanceM(current.lon, current.lat, c.lon, c.lat) <= STREET_POI_RADIUS_M)
+      .map((c) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
+        properties: { id: c.id, type: c.type },
+      })),
+  };
 }
 
 function clearArrows(map) {
   map.getSource(SOURCE_ID)?.setData(EMPTY);
+  map.getSource(POI_SOURCE_ID)?.setData(EMPTY);
 }
 
 function ensureLayer(map) {
   if (!map.hasImage('nav-arrow')) map.addImage('nav-arrow', makeArrowImage(), { pixelRatio: 2 });
+  if (!map.getSource(POI_SOURCE_ID)) map.addSource(POI_SOURCE_ID, { type: 'geojson', data: EMPTY });
+  if (!map.getLayer(POI_LAYER_ID)) {
+    map.addLayer({
+      id: POI_LAYER_ID,
+      type: 'circle',
+      source: POI_SOURCE_ID,
+      paint: {
+        'circle-radius': 4,
+        'circle-color': ['case', ['==', ['get', 'type'], 'equirectangular'], '#2962ff', '#ff6f00'],
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 1.2,
+        'circle-opacity': 0.9,
+        'circle-pitch-alignment': 'map',
+      },
+    });
+    map.on('click', POI_LAYER_ID, (e) => {
+      const f = e.features && e.features[0];
+      if (f) navigateTo(map, f.properties.id).catch((err) => console.error('poi nav', err));
+    });
+  }
   if (!map.getSource(SOURCE_ID)) map.addSource(SOURCE_ID, { type: 'geojson', data: EMPTY });
   if (!map.getLayer(LAYER_ID)) {
     // icon-rotation/pitch alignment "map" makes the chevron lie flat on the

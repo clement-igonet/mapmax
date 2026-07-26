@@ -74,7 +74,9 @@ export function setBlend(alpha) {
   if (!photosphere || !svMap) return;
   photosphere.blend(alpha);
   if (alpha >= 0.99) suspendTileLayers(svMap);
-  else resumeTileLayers(svMap);
+  // Reveal OSM for mixing, but keep Panoramax tiles suspended so far POIs never
+  // load in street mode — nearby ones show via the bounded GeoJSON (#27).
+  else resumeTileLayers(svMap, ['panoramax']);
 }
 
 export function exitStreetView() {

@@ -19,6 +19,10 @@ export const START_VIEW = {
 export const MAP_MAX_PITCH = 85;
 export const STREET_MAX_PITCH = 179;
 
+// In street mode, only show/load Panoramax pictures within this radius (meters)
+// around the current photosphere — keeps the scene light and POIs nearby (#27).
+export const STREET_POI_RADIUS_M = 50;
+
 // Photosphere plugin defaults (SPECIFICATIONS.md §2.2, §2.5).
 export const PHOTOSPHERE = {
   eyeHeight: 1.6,
