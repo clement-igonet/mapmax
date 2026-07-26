@@ -6,6 +6,8 @@ import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { enterStreetView, exitStreetView, isStreetMode, setBlend } from './streetview.js';
 import { sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
+import { setupControls } from './controls.js';
+import { setupMinimap } from './minimap.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 
 const status = (msg) => {
@@ -38,6 +40,8 @@ export const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
 setupNavigation(map);
+setupControls(map);
+setupMinimap(map);
 
 map.on('style.load', () => {
   ensureBuildings3D();
@@ -63,6 +67,7 @@ onPictureClick(map, async (id) => {
     await enterStreetView(map, pic);
     document.getElementById('exit-street').hidden = false;
     document.getElementById('blend-control').hidden = false;
+    document.getElementById('minimap').hidden = false;
     status(`${pic.type} by ${pic.producer || 'unknown'} — drag to look, click a ground arrow to walk, Esc to exit.`);
   } catch (err) {
     console.error(err);
@@ -79,6 +84,7 @@ const exitBtn = document.getElementById('exit-street');
 const leaveStreetUI = () => {
   exitBtn.hidden = true;
   document.getElementById('blend-control').hidden = true;
+  document.getElementById('minimap').hidden = true;
   blendSlider.value = '100';
   status('Zoom in and click a Panoramax picture dot.');
 };

@@ -122,12 +122,20 @@ export class Photosphere {
             map.on('load', () => map.addLayer(this._layer));
         }
 
+        this._pinchDist = 0;
         this._onMouseDown = this._onMouseDown.bind(this);
         this._onMouseMove = this._onMouseMove.bind(this);
         this._onMouseUp = this._onMouseUp.bind(this);
-        map.getContainer().addEventListener('mousedown', this._onMouseDown);
+        this._onTouchStart = this._onTouchStart.bind(this);
+        this._onTouchMove = this._onTouchMove.bind(this);
+        this._onTouchEnd = this._onTouchEnd.bind(this);
+        const container = map.getContainer();
+        container.addEventListener('mousedown', this._onMouseDown);
         addEventListener('mousemove', this._onMouseMove);
         addEventListener('mouseup', this._onMouseUp);
+        container.addEventListener('touchstart', this._onTouchStart, { passive: false });
+        container.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        container.addEventListener('touchend', this._onTouchEnd);
     }
 
     get mode() {
@@ -142,6 +150,26 @@ export class Photosphere {
     // sphere show through for photo↔mixed↔vector blending (mapmax #6).
     blend(alpha) {
         this._blend = Math.max(0, Math.min(1, alpha));
+        this._map.triggerRepaint();
+    }
+
+    get yaw() { return this._yawDeg; }
+    get pitch() { return this._pitchDeg; }
+
+    // Look around by a delta (degrees) — drives keyboard / touch controls
+    // outside the built-in mouse drag (mapmax #7).
+    look(deltaYawDeg, deltaPitchDeg) {
+        if (this._mode !== 'inside') return;
+        const { minPitch, maxPitch } = this._options;
+        this._yawDeg = (this._yawDeg + deltaYawDeg + 360) % 360;
+        this._pitchDeg = Math.max(minPitch, Math.min(maxPitch, this._pitchDeg + deltaPitchDeg));
+        this._updateCameraWhileInside();
+        this._map.triggerRepaint();
+    }
+
+    // Field-of-view zoom (degrees), clamped — scroll wheel / pinch (mapmax #7).
+    zoomFov(deltaDeg) {
+        this._options.fov = Math.max(25, Math.min(100, this._options.fov + deltaDeg));
         this._map.triggerRepaint();
     }
 
@@ -212,9 +240,13 @@ export class Photosphere {
 
     remove() {
         const map = this._map;
-        map.getContainer().removeEventListener('mousedown', this._onMouseDown);
+        const container = map.getContainer();
+        container.removeEventListener('mousedown', this._onMouseDown);
         removeEventListener('mousemove', this._onMouseMove);
         removeEventListener('mouseup', this._onMouseUp);
+        container.removeEventListener('touchstart', this._onTouchStart);
+        container.removeEventListener('touchmove', this._onTouchMove);
+        container.removeEventListener('touchend', this._onTouchEnd);
         if (map.getLayer(this._layer.id)) {
             map.removeLayer(this._layer.id);
         }
@@ -418,5 +450,48 @@ export class Photosphere {
 
     _onMouseUp() {
         this._dragging = false;
+    }
+
+    // Touch: one finger looks around, two fingers pinch to zoom FOV (mapmax #7).
+    _onTouchStart(event) {
+        if (this._mode !== 'inside') return;
+        if (event.touches.length === 1) {
+            this._dragging = true;
+            this._lastX = event.touches[0].clientX;
+            this._lastY = event.touches[0].clientY;
+        } else if (event.touches.length === 2) {
+            this._dragging = false;
+            this._pinchDist = this._touchDistance(event);
+        }
+    }
+
+    _onTouchMove(event) {
+        if (this._mode !== 'inside') return;
+        event.preventDefault();
+        const { dragSensitivity, minPitch, maxPitch } = this._options;
+        if (event.touches.length === 1 && this._dragging) {
+            const t = event.touches[0];
+            this._yawDeg = (this._yawDeg - (t.clientX - this._lastX) * dragSensitivity + 360) % 360;
+            this._pitchDeg = Math.max(minPitch, Math.min(maxPitch,
+                this._pitchDeg + (t.clientY - this._lastY) * dragSensitivity));
+            this._lastX = t.clientX;
+            this._lastY = t.clientY;
+            this._updateCameraWhileInside();
+            this._map.triggerRepaint();
+        } else if (event.touches.length === 2 && this._pinchDist) {
+            const d = this._touchDistance(event);
+            this.zoomFov((this._pinchDist - d) * 0.2);
+            this._pinchDist = d;
+        }
+    }
+
+    _onTouchEnd(event) {
+        this._dragging = false;
+        if (!event.touches || event.touches.length < 2) this._pinchDist = 0;
+    }
+
+    _touchDistance(event) {
+        const [a, b] = event.touches;
+        return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     }
 }

@@ -67,6 +67,17 @@ export function destinationPoint(lon, lat, bearingDeg, distM) {
   return [rad2deg(λ2), rad2deg(φ2)];
 }
 
+// Project a lngLat to minimap pixel coords relative to `center` (#7 minimap).
+export function projectToMinimap(center, lngLat, metersPerPx, size) {
+  const [clon, clat] = center;
+  const [lon, lat] = lngLat;
+  const mPerDegLat = 111320;
+  const mPerDegLon = mPerDegLat * Math.cos(deg2rad(clat));
+  const dxM = (lon - clon) * mPerDegLon;
+  const dyM = (lat - clat) * mPerDegLat;
+  return { x: size / 2 + dxM / metersPerPx, y: size / 2 - dyM / metersPerPx };
+}
+
 // Smallest signed angular difference a-b in degrees, in (-180, 180].
 export function angularDiff(aDeg, bDeg) {
   let d = (aDeg - bDeg) % 360;

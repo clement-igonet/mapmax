@@ -45,6 +45,22 @@ export function pickArrows(current, candidates, options = {}) {
   return chosen;
 }
 
+// The arrow whose direction best matches `headingDeg` (the way the user is
+// looking), within `maxDiff` degrees — used to "advance" with the keyboard or
+// double-click (SPECIFICATIONS.md §2.5). Returns null when nothing lies ahead.
+export function chooseByHeading(arrows, headingDeg, maxDiff = 55) {
+  let best = null;
+  let bestDiff = Infinity;
+  for (const a of arrows) {
+    const d = Math.abs(angularDiff(a.bearing, headingDeg));
+    if (d < bestDiff) {
+      bestDiff = d;
+      best = a;
+    }
+  }
+  return best && bestDiff <= maxDiff ? best : null;
+}
+
 export function arrowsToGeoJSON(arrows) {
   return {
     type: 'FeatureCollection',
