@@ -5,6 +5,7 @@ import { Photosphere } from './vendor/photosphere-plugin.js';
 import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH } from './config.js';
 import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
+import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 
 export { pictureToTarget };
 
@@ -40,6 +41,9 @@ export function enterStreetView(map, pic) {
         // Stop the pitch-90 tile-loading explosion: the sphere hides the map,
         // so suspend all tiled layers while inside (#11).
         suspendTileLayers(map);
+        // Ground + sky backdrop so the vector-only view is never a raw-white
+        // void (#37).
+        applyStreetBackdrop(map);
         // Honor an exit requested during the enter animation (e.g. Esc mid-entry).
         if (pendingExit) {
           pendingExit = false;
@@ -48,6 +52,7 @@ export function enterStreetView(map, pic) {
       },
       onExit: () => {
         document.body.classList.remove('street-mode');
+        removeStreetBackdrop(map);
         try { map.setMaxPitch(MAP_MAX_PITCH); } catch { /* ignore */ }
         current = null;
         emit(null);
