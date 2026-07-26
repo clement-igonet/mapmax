@@ -65,11 +65,17 @@ const nav = await page.evaluate(async () => {
   const tiled = tiledLayerIds(map.getStyle());
   const hiddenInside = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') === 'none').length;
-  // #6 blend: drag to mixed → vector layers come back; back to photo → suspended.
+  // #6 blend: drag to mixed → OSM vector comes back; #27: Panoramax tiles stay
+  // suspended (far POIs never load), only nearby ≤50 m POIs show via GeoJSON.
   const { sliderToBlend } = await import('./src/target.js');
+  const osmTiled = tiledLayerIds(map.getStyle(), ['panoramax']);
+  const panoramaxTiled = tiled.filter((id) => !osmTiled.includes(id));
   sv.setBlend(sliderToBlend(50));
-  const visibleAtMixed = tiled.filter((id) => map.getLayer(id) &&
+  const osmVisibleAtMixed = osmTiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
+  const panoramaxHiddenAtMixed = panoramaxTiled.filter((id) => map.getLayer(id) &&
+    map.getLayoutProperty(id, 'visibility') === 'none').length;
+  const visibleAtMixed = osmVisibleAtMixed; // OSM reveal count (kept name below)
   sv.setBlend(sliderToBlend(100));
   const hiddenBackToPhoto = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') === 'none').length;
@@ -89,10 +95,12 @@ const nav = await page.evaluate(async () => {
   await waitFor(() => !sv.isStreetMode(), 8000);
   const visibleAfter = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
+  const poiSourceExists = !!map.getSource('mapmax-nearby-poi');
   return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode,
            tiledCount: tiled.length, hiddenInside, visibleAfter,
-           visibleAtMixed, hiddenBackToPhoto, blendInside,
-           yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom };
+           osmTiledCount: osmTiled.length, panoramaxTiledCount: panoramaxTiled.length,
+           osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
+           poiSourceExists, yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom };
 });
 if (nav.skipped) {
   console.log('[e2e] WARN: no panorama fetched from sample sequence — enter/exit not exercised');
@@ -103,7 +111,10 @@ if (nav.skipped) {
   assert.ok(nav.tiledCount > 0, 'expected some tiled layers');
   assert.equal(nav.hiddenInside, nav.tiledCount, `tiled layers not suspended inside (#11): ${nav.hiddenInside}/${nav.tiledCount}`);
   assert.equal(nav.visibleAfter, nav.tiledCount, 'tiled layers not restored after exit (#11)');
-  assert.equal(nav.visibleAtMixed, nav.tiledCount, `blend 50% did not reveal vector layers (#6)`);
+  assert.equal(nav.osmVisibleAtMixed, nav.osmTiledCount, `blend 50% did not reveal OSM vector layers (#6)`);
+  assert.ok(nav.panoramaxTiledCount > 0, 'expected Panoramax tiled layers');
+  assert.equal(nav.panoramaxHiddenAtMixed, nav.panoramaxTiledCount, `Panoramax tiles must stay suspended in blend — far POIs must not load (#27)`);
+  assert.ok(nav.poiSourceExists, 'bounded nearby-POI GeoJSON source missing (#27)');
   assert.equal(nav.hiddenBackToPhoto, nav.tiledCount, `blend 100% did not re-suspend tiles (#6)`);
   assert.equal(nav.blendInside, 1, 'blend 100% should set photo opacity to 1 (#6)');
   assert.ok(nav.yawChanged, 'keyboard look did not change yaw (#7)');
@@ -111,7 +122,7 @@ if (nav.skipped) {
   assert.ok(nav.minimapShown, 'minimap not shown in street mode (#7)');
   assert.ok(nav.fovSyncEnter, 'map FOV != sphere FOV on enter — photo/vector desync (#24)');
   assert.ok(nav.fovSyncAfterZoom, 'map FOV != sphere FOV after zoom — desync (#24)');
-  console.log(`[e2e] enter/exit OK; tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK; controls OK; FOV sync OK (#24)`);
+  console.log(`[e2e] enter/exit OK; tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK (OSM ${nav.osmVisibleAtMixed}/${nav.osmTiledCount}, panoramax kept ${nav.panoramaxHiddenAtMixed}/${nav.panoramaxTiledCount} suspended #27); controls OK; FOV sync OK`);
 }
 
 // Console must stay clean (#14).

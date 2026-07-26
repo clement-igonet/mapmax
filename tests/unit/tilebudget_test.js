@@ -37,3 +37,10 @@ Deno.test('tiledLayerIds keeps geojson, custom and sourceless layers loading-fre
 Deno.test('tiledLayerIds tolerates a style with no sources/layers', () => {
   assertEquals(tiledLayerIds({}), []);
 });
+
+Deno.test('tiledLayerIds(keepSources) excludes kept sources — Panoramax stays suspended (#27)', () => {
+  const ids = tiledLayerIds(style, ['panoramax']);
+  assertEquals(ids.includes('panoramax-pictures'), false, 'panoramax layer must be excluded');
+  // OSM/raster layers still selected (they may resume for blend mixing)
+  assertEquals(ids.sort(), ['building-3d', 'hillshade', 'roads']);
+});
