@@ -19,7 +19,7 @@ Deno.test('deployed page is served and wires the app (issue #1)', async () => {
 Deno.test('deployed app hardens style against console errors (issue #14)', async () => {
   const js = await (await fetch(`${BASE}/src/main.js`)).text();
   assert(js.includes('styleimagemissing'), 'missing-sprite placeholder handler absent');
-  assert(js.includes('hardenBuildingHeights'), 'building height hardening absent');
+  assert(js.includes('loadHardenedStyle'), 'building height hardening absent');
 });
 
 Deno.test('deployed JS modules are served', async () => {

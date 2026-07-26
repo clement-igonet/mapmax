@@ -1,0 +1,22 @@
+# MapMax — reference way to build, run and test the site in containers.
+#
+#   podman compose up -d web          # build + serve on http://localhost:8080
+#   WEB_PORT=8081 podman compose up -d web   # if 8080 is taken
+#   podman compose run --rm e2e       # containerized Chromium e2e against web
+#   TARGET_URL=https://clement-igonet.github.io/mapmax/ \
+#     podman compose run --rm e2e     # same e2e against the deployed site
+#
+# (docker compose works identically.)
+services:
+  web:
+    build: .
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+  e2e:
+    build: tests/browser
+    depends_on:
+      - web
+    environment:
+      # pass-through: defaults to http://web/ inside the test script
+      - TARGET_URL

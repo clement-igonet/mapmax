@@ -3,15 +3,27 @@ import { OSM_STYLE_URL, START_VIEW, MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { enterStreetView, exitStreetView, isStreetMode } from './streetview.js';
 import { setupNavigation } from './navigation.js';
-import { buildingBaseExpr, buildingHeightExpr, transparentPixel } from './stylefix.js';
+import { hardenStyle, transparentPixel } from './stylefix.js';
 
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
 };
 
+// The style is hardened BEFORE map creation so not a single frame renders
+// raw null-able expressions (#14 — verified by the containerized Chromium e2e).
+async function loadHardenedStyle() {
+  try {
+    const style = await (await fetch(OSM_STYLE_URL)).json();
+    return hardenStyle(style);
+  } catch (err) {
+    console.warn('style hardening failed, using raw style', err);
+    return OSM_STYLE_URL;
+  }
+}
+
 export const map = new maplibregl.Map({
   container: 'map',
-  style: OSM_STYLE_URL,
+  style: await loadHardenedStyle(),
   ...START_VIEW,
   maxPitch: MAX_PITCH,
   hash: true,
@@ -23,7 +35,6 @@ setupNavigation(map);
 
 map.on('style.load', () => {
   ensureBuildings3D();
-  hardenBuildingHeights();
   addPanoramaxLayers(map);
   status('Zoom in and click a Panoramax picture dot.');
 });
@@ -33,15 +44,6 @@ map.on('style.load', () => {
 map.on('styleimagemissing', (e) => {
   if (!map.hasImage(e.id)) map.addImage(e.id, transparentPixel());
 });
-
-// Null height tags on OSM buildings crash paint expressions (#14).
-function hardenBuildingHeights() {
-  for (const layer of map.getStyle().layers) {
-    if (layer.type !== 'fill-extrusion') continue;
-    map.setPaintProperty(layer.id, 'fill-extrusion-height', buildingHeightExpr());
-    map.setPaintProperty(layer.id, 'fill-extrusion-base', buildingBaseExpr());
-  }
-}
 
 onPictureClick(map, async (id) => {
   status('Loading picture metadata…');

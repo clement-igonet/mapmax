@@ -4,16 +4,29 @@ Street-level immersive navigation: [Panoramax](https://panoramax.fr) photosphere
 
 See [SPECIFICATIONS.md](SPECIFICATIONS.md) for the full expectations.
 
+## Run with containers (reference deployment)
+
+```sh
+podman compose up -d web        # build + serve on http://localhost:8080
+# docker compose works identically
+```
+
 ## Tests
 
 ```sh
-deno task test        # unit + e2e against the deployed site — run after each deployment
-deno task test:unit   # pure logic only
+deno task test                  # unit + fetch-level e2e against the deployed site
+deno task test:unit             # pure logic only
+podman compose run --rm e2e     # containerized Chromium end-to-end (against web)
+TARGET_URL=https://clement-igonet.github.io/mapmax/ podman compose run --rm e2e
 ```
+
+The full suite (Deno + containerized Chromium e2e) is run after each deployment.
 
 ## Status
 
-Project bootstrap. Work is tracked through [GitHub Issues](../../issues) and merged via Pull Requests.
+Work is tracked through [GitHub Issues](../../issues) and merged via Pull Requests.
+
+👉 **[See the remaining open issues](https://github.com/clement-igonet/mapmax/issues?q=is%3Aissue+is%3Aopen)**
 
 ## Deployment
 
