@@ -34,11 +34,14 @@ function clearMarkers() {
 // STREET_POI_RADIUS_M (#27) — the same fetch feeds both.
 async function refresh(map, pic) {
   const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
+  // Only offer 360° panoramas: flat pictures can't be shown in the sphere yet,
+  // so never route navigation to them (#40).
+  const pano = candidates.filter((c) => c.type === 'equirectangular');
   clearMarkers();
-  for (const a of pickArrows(pic, candidates)) {
+  for (const a of pickArrows(pic, pano)) {
     arrowMarkers.push(makeArrowMarker(map, a));
   }
-  for (const c of candidates) {
+  for (const c of pano) {
     if (c.id === pic.id) continue;
     if (distanceM(pic.lon, pic.lat, c.lon, c.lat) > STREET_POI_RADIUS_M) continue;
     poiMarkers.push(makePoiMarker(map, c));
@@ -99,7 +102,8 @@ export async function advance(map, headingDeg) {
   const pic = currentPicture();
   if (!pic) return null;
   const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
-  const arrow = chooseByHeading(pickArrows(pic, candidates), headingDeg);
+  const pano = candidates.filter((c) => c.type === 'equirectangular');
+  const arrow = chooseByHeading(pickArrows(pic, pano), headingDeg);
   if (!arrow) return null;
   return navigateTo(map, arrow.targetId);
 }

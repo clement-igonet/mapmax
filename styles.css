@@ -47,6 +47,40 @@ body {
   word-break: break-all;
 }
 
+#pic-info a {
+  color: #7ab8ff;
+}
+
+.pic-badge {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 10px;
+  color: #fff;
+  vertical-align: baseline;
+}
+
+.pic-badge.is-360 {
+  background: #2962ff;
+}
+
+.pic-badge.is-flat {
+  background: #ff6f00;
+}
+
+.flat-popup img {
+  width: 100%;
+  border-radius: 4px;
+  display: block;
+}
+
+.flat-popup .flat-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 #exit-street {
   position: absolute;
   top: 10px;

@@ -4,7 +4,7 @@ import * as maplibregl from 'maplibre-gl';
 import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { enterStreetView, exitStreetView, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
-import { formatPicInfo, sliderToBlend } from './target.js';
+import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
@@ -43,12 +43,34 @@ setupNavigation(map);
 setupControls(map);
 setupMinimap(map);
 
-// Show the current picture's info (id, type, author) in the page (#34).
+// Show the current picture's info in the page: a 360°/flat badge, the full id,
+// the author and a link to the original image (#34, #40).
 const picInfo = document.getElementById('pic-info');
-onPictureChanged((pic) => {
-  picInfo.textContent = formatPicInfo(pic);
-  picInfo.hidden = !pic;
-});
+function renderPicInfo(pic) {
+  picInfo.replaceChildren();
+  if (!pic) {
+    picInfo.hidden = true;
+    return;
+  }
+  const badge = document.createElement('span');
+  badge.className = `pic-badge ${isEquirectangular(pic) ? 'is-360' : 'is-flat'}`;
+  badge.textContent = picBadge(pic);
+  picInfo.append(
+    badge,
+    document.createTextNode(` id ${pic.id}${pic.producer ? ` · by ${pic.producer}` : ''} · `)
+  );
+  const url = originalImageUrl(pic);
+  if (url) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'View original ↗';
+    picInfo.append(link);
+  }
+  picInfo.hidden = false;
+}
+onPictureChanged(renderPicInfo);
 
 map.on('style.load', () => {
   ensureBuildings3D();
@@ -70,12 +92,19 @@ onPictureClick(map, async (id) => {
   );
   try {
     const pic = await getPicture(id);
+    // Flat (non-360) pictures can't be a photosphere — don't wrap them onto the
+    // sphere. Show the original in a popup instead (#40). 360° panoramas enter.
+    if (!isEquirectangular(pic)) {
+      showFlatPicture(pic);
+      status('Flat photo (not a 360° panorama) — opened the original. Blue dots are 360°.');
+      return;
+    }
     status('Loading image…');
     await enterStreetView(map, pic);
     document.getElementById('exit-street').hidden = false;
     document.getElementById('blend-control').hidden = false;
     document.getElementById('minimap').hidden = false;
-    status(`${pic.type} by ${pic.producer || 'unknown'} — drag to look, click a ground arrow to walk, Esc to exit.`);
+    status('360° panorama — drag to look, click a ground arrow to walk, Esc to exit.');
   } catch (err) {
     console.error(err);
     status(`Failed to load picture: ${err.message || 'image could not be loaded'}`);
@@ -83,6 +112,27 @@ onPictureClick(map, async (id) => {
     clearInterval(watchdog);
   }
 });
+
+// A flat picture: show its original image (oriented by its compass heading) in
+// a popup rather than a broken sphere — an oriented in-sphere patch is a
+// follow-up (#40).
+function showFlatPicture(pic) {
+  const url = originalImageUrl(pic);
+  const heading = Math.round(pic.heading || 0);
+  new maplibregl.Popup({ maxWidth: '360px' })
+    .setLngLat([pic.lon, pic.lat])
+    .setHTML(
+      `<div class="flat-popup">
+        <a href="${url}" target="_blank" rel="noopener"><img src="${pic.assets.sd || pic.assets.thumb || url}" alt="flat picture"></a>
+        <div class="flat-meta"><b>flat photo</b> · heading ${heading}° · by ${escapeHtml(pic.producer || 'unknown')}<br>
+        Not a 360° panorama. <a href="${url}" target="_blank" rel="noopener">View original ↗</a></div>
+      </div>`
+    )
+    .addTo(map);
+}
+
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const blendSlider = document.getElementById('blend');
 blendSlider.addEventListener('input', () => setBlend(sliderToBlend(blendSlider.value)));

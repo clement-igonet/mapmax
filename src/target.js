@@ -23,3 +23,10 @@ export function formatPicInfo(pic) {
   if (pic.producer) parts.push(`by ${pic.producer}`);
   return parts.join(' · ');
 }
+
+// Projection badge label for the HUD (#40).
+export const isEquirectangular = (pic) => pic?.type === 'equirectangular';
+export const picBadge = (pic) => (isEquirectangular(pic) ? '360°' : 'flat');
+
+// URL of the full-resolution original image, to view it as-is (#40).
+export const originalImageUrl = (pic) => pic?.assets?.hd || pic?.assets?.sd || pic?.assets?.thumb || '';
