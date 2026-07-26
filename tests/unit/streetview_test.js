@@ -1,6 +1,6 @@
 // Unit tests for the picture → photosphere-plugin target mapping (plugin adoption).
 import { assert, assertEquals } from 'jsr:@std/assert@1';
-import { formatPicInfo, pictureToTarget } from '../../src/target.js';
+import { formatPicInfo, isEquirectangular, originalImageUrl, picBadge, pictureToTarget } from '../../src/target.js';
 
 const pic = {
   lon: 2.325,
@@ -39,4 +39,19 @@ Deno.test('formatPicInfo: shows the full id, type and author (#34)', () => {
 Deno.test('formatPicInfo: empty for no picture; omits author when absent', () => {
   assertEquals(formatPicInfo(null), '');
   assertEquals(formatPicInfo({ id: 'x', type: 'flat' }), 'flat · id x');
+});
+
+Deno.test('picBadge / isEquirectangular: 360° vs flat (#40)', () => {
+  assertEquals(picBadge({ type: 'equirectangular' }), '360°');
+  assertEquals(picBadge({ type: 'flat' }), 'flat');
+  assertEquals(isEquirectangular({ type: 'equirectangular' }), true);
+  assertEquals(isEquirectangular({ type: 'flat' }), false);
+  assertEquals(isEquirectangular(null), false);
+});
+
+Deno.test('originalImageUrl: prefers hd, falls back, empty when none (#40)', () => {
+  assertEquals(originalImageUrl({ assets: { hd: 'h', sd: 's', thumb: 't' } }), 'h');
+  assertEquals(originalImageUrl({ assets: { sd: 's' } }), 's');
+  assertEquals(originalImageUrl({ assets: {} }), '');
+  assertEquals(originalImageUrl(null), '');
 });
