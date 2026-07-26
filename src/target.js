@@ -14,3 +14,12 @@ export function sliderToBlend(percent) {
   const p = Math.max(0, Math.min(100, Number(percent)));
   return p / 100;
 }
+
+// One-line info shown in the page for the current picture (#34): type, id and
+// author. The full id is kept intact so it can be selected/copied.
+export function formatPicInfo(pic) {
+  if (!pic) return '';
+  const parts = [pic.type || 'picture', `id ${pic.id}`];
+  if (pic.producer) parts.push(`by ${pic.producer}`);
+  return parts.join(' · ');
+}
