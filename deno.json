@@ -1,6 +1,6 @@
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.177.0/build/three.module.js"
+    "maplibre-gl": "https://unpkg.com/maplibre-gl@6.0.0/dist/maplibre-gl.mjs"
   },
   "tasks": {
     "test": "deno test --allow-net --allow-read --allow-env tests/",

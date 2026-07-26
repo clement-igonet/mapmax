@@ -1,5 +1,7 @@
-// MapMax entry point — MapLibre map with OSM ground rendering and 3D buildings.
-import { OSM_STYLE_URL, START_VIEW, MAX_PITCH } from './config.js';
+// MapMax entry point — MapLibre map (OSM ground + 3D buildings) with immersive
+// Panoramax photospheres via the vendored maplibre-gl-photosphere plugin.
+import * as maplibregl from 'maplibre-gl';
+import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { enterStreetView, exitStreetView, isStreetMode } from './streetview.js';
 import { setupNavigation } from './navigation.js';
@@ -25,7 +27,10 @@ export const map = new maplibregl.Map({
   container: 'map',
   style: await loadHardenedStyle(),
   ...START_VIEW,
-  maxPitch: MAX_PITCH,
+  maxPitch: MAP_MAX_PITCH,
+  // Keep the camera free of the ground plane so the photosphere plugin can sit
+  // the eye at a fixed elevation (SPECIFICATIONS.md §2.2).
+  centerClampedToGround: false,
   hash: true,
 });
 
@@ -56,7 +61,7 @@ onPictureClick(map, async (id) => {
     status('Loading image…');
     await enterStreetView(map, pic);
     document.getElementById('exit-street').hidden = false;
-    status(`${pic.type} by ${pic.producer || 'unknown'} — drag to look, scroll to zoom, Esc to exit.`);
+    status(`${pic.type} by ${pic.producer || 'unknown'} — drag to look, click a ground arrow to walk, Esc to exit.`);
   } catch (err) {
     console.error(err);
     status(`Failed to load picture: ${err.message || 'image could not be loaded'}`);
@@ -71,11 +76,13 @@ const leaveStreetUI = () => {
   status('Zoom in and click a Panoramax picture dot.');
 };
 exitBtn.addEventListener('click', () => {
-  if (isStreetMode()) exitStreetView(map);
+  if (isStreetMode()) exitStreetView();
   leaveStreetUI();
 });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !isStreetMode()) leaveStreetUI();
+  if (e.key !== 'Escape') return;
+  if (isStreetMode()) exitStreetView();
+  leaveStreetUI();
 });
 
 map.on('error', (e) => {

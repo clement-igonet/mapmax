@@ -71,8 +71,12 @@ export function normalizeItem(f) {
   const p = f.properties || {};
   const links = f.links || [];
   const io = p['pers:interior_orientation'] || {};
+  // The authoritative 360 marker is the GPano XMP projection type; fall back to
+  // field-of-view / pano flag / sensor-ratio heuristic when exif is absent.
+  const gpano = p.exif && p.exif['Xmp.GPano.ProjectionType'];
   const type =
-    io.field_of_view === 360 || p['pano'] === true ? 'equirectangular'
+    gpano === 'equirectangular' ? 'equirectangular'
+    : io.field_of_view === 360 || p['pano'] === true ? 'equirectangular'
     : io.field_of_view ? 'flat'
     : guessTypeFromAssets(f);
   return {
@@ -83,6 +87,7 @@ export function normalizeItem(f) {
     hfov: io.field_of_view || (type === 'equirectangular' ? 360 : 70),
     type,
     sequenceId: f.collection,
+    rankInSequence: p['geovisio:rank_in_collection'],
     nextId: idFromHref((links.find((l) => l.rel === 'next') || {}).href),
     prevId: idFromHref((links.find((l) => l.rel === 'prev') || {}).href),
     assets: {
@@ -118,4 +123,12 @@ export async function searchNearby(lon, lat, radiusM = 30, limit = 50) {
   const bbox = [lon - dLon, lat - dLat, lon + dLon, lat + dLat].join(',');
   const data = await stac(`/search?bbox=${bbox}&limit=${limit}`);
   return (data.features || []).map(normalizeItem);
+}
+
+// A whole street in capture order: a Panoramax collection is a sequence.
+export async function getSequence(collectionId, limit = 200) {
+  const data = await stac(`/collections/${collectionId}/items?limit=${limit}`);
+  return (data.features || [])
+    .map(normalizeItem)
+    .sort((a, b) => (a.rankInSequence ?? 0) - (b.rankInSequence ?? 0));
 }

@@ -16,7 +16,7 @@
     }
   },
   "remote": {
-    "https://cdn.jsdelivr.net/npm/three@0.177.0/build/three.core.js": "d08f241a087f0bd4e44ee434df62a105710d58384dccf003d8bcf888414d06fd",
-    "https://cdn.jsdelivr.net/npm/three@0.177.0/build/three.module.js": "9175fd878af6eb6b58ae4cfa722ea7b627ca211c5382c031c9ec19143b07a0cd"
+    "https://unpkg.com/maplibre-gl@6.0.0/dist/maplibre-gl-shared.mjs": "ba5bae6a93301ad92b8466fce6b80f8299c5825c41ae76496293bde34db96713",
+    "https://unpkg.com/maplibre-gl@6.0.0/dist/maplibre-gl.mjs": "a641b06ae13a7aecc688c2de315b6483353ff62ba8276367e19acf51394fd3b1"
   }
 }
