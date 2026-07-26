@@ -117,10 +117,20 @@ function ensureLayer(map) {
         'circle-pitch-alignment': 'map',
       },
     });
-    map.on('click', POI_LAYER_ID, (e) => {
+    map.on('click', POI_LAYER_ID, async (e) => {
       const f = e.features && e.features[0];
-      if (f) navigateTo(map, f.properties.id).catch((err) => console.error('poi nav', err));
+      if (!f || navigating) return;
+      navigating = true;
+      try {
+        await navigateTo(map, f.properties.id);
+      } catch (err) {
+        console.error('poi nav', err);
+      } finally {
+        navigating = false;
+      }
     });
+    map.on('mouseenter', POI_LAYER_ID, () => (map.getCanvas().style.cursor = 'pointer'));
+    map.on('mouseleave', POI_LAYER_ID, () => (map.getCanvas().style.cursor = ''));
   }
   if (!map.getSource(SOURCE_ID)) map.addSource(SOURCE_ID, { type: 'geojson', data: EMPTY });
   if (!map.getLayer(LAYER_ID)) {
