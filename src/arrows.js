@@ -3,7 +3,7 @@
 // From the current picture and nearby candidates, choose which navigation
 // arrows to draw on the street: nearest picture per direction sector, placed
 // a few meters from the camera toward the target (SPECIFICATIONS.md §2.3).
-import { angularDiff, bearingBetween, destinationPoint, distanceM } from './geo.js';
+import { angularDiff, bearingBetween, destinationPoint, distanceM, rad2deg } from './geo.js';
 
 export const ARROW_DEFAULTS = {
   maxDist: 30, // ignore pictures farther than this (meters)
@@ -61,30 +61,37 @@ export function chooseByHeading(arrows, headingDeg, maxDiff = 55) {
   return best && bestDiff <= maxDiff ? best : null;
 }
 
-// Chevron polygon for the ground navigation arrow, centered in a `size`×`size`
-// icon with a clear `pad` margin so it never touches (and so is never clipped
-// by) the icon's own bounds (#26). Tip points up (-y); returns [tip, right,
-// notch, left] in pixel coords.
-export function arrowGlyphPoints(size = 128, pad = 14) {
-  const cx = size / 2;
-  const top = pad;
-  const bottom = size - pad;
-  const notchY = top + (bottom - top) * 0.62;
-  const halfW = size / 2 - pad;
-  return [
-    [cx, top],
-    [cx + halfW, bottom],
-    [cx, notchY],
-    [cx - halfW, bottom],
-  ];
+// A ground arrow drawn as REAL geographic geometry (not a billboard icon): an
+// arrowhead chevron in local meters, oriented toward `bearingDeg` and converted
+// to lng/lat. Rendered by a fill layer it lies flat on the street and is never
+// clipped like a foreshortened icon quad at grazing pitch (#26).
+// Local shape: +y = forward (bearing), +x = right; units ≈ meters × `scale`.
+const ARROW_SHAPE = [
+  [0, 2.2],   // tip
+  [1.4, 0.4], // right wing
+  [0.5, 0.4], // right inner
+  [0.5, -1.0],// right tail
+  [-0.5, -1.0],// left tail
+  [-0.5, 0.4],// left inner
+  [-1.4, 0.4],// left wing
+];
+
+export function groundArrowPolygon(lon, lat, bearingDeg, scale = 1) {
+  const ring = ARROW_SHAPE.map(([x, y]) => {
+    const dist = Math.hypot(x, y) * scale;
+    const brng = bearingDeg + rad2deg(Math.atan2(x, y));
+    return destinationPoint(lon, lat, brng, dist);
+  });
+  ring.push(ring[0]); // close the ring
+  return [ring];
 }
 
-export function arrowsToGeoJSON(arrows) {
+export function arrowsToGeoJSON(arrows, scale = 1) {
   return {
     type: 'FeatureCollection',
     features: arrows.map((a) => ({
       type: 'Feature',
-      geometry: { type: 'Point', coordinates: [a.lon, a.lat] },
+      geometry: { type: 'Polygon', coordinates: groundArrowPolygon(a.lon, a.lat, a.bearing, scale) },
       properties: { targetId: a.targetId, bearing: a.bearing, sameSequence: a.sameSequence },
     })),
   };

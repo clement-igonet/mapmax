@@ -78,6 +78,13 @@ export function projectToMinimap(center, lngLat, metersPerPx, size) {
   return { x: size / 2 + dxM / metersPerPx, y: size / 2 - dyM / metersPerPx };
 }
 
+// True when the pointer moved more than `threshold` px between press and
+// release — i.e. a drag (look-around), not a tap. Used to stop a look-drag
+// from firing a navigation click (#32).
+export function isDragGesture(ax, ay, bx, by, threshold = 6) {
+  return Math.hypot(bx - ax, by - ay) > threshold;
+}
+
 // Smallest signed angular difference a-b in degrees, in (-180, 180].
 export function angularDiff(aDeg, bDeg) {
   let d = (aDeg - bDeg) % 360;

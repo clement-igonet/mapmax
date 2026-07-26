@@ -28,6 +28,29 @@ await page.waitForFunction(
 );
 assert.match(await page.title(), /MapMax/, 'page title');
 
+// docs (#12): every chapter illustration referenced in SPECIFICATIONS.md must
+// render as a valid SVG in the browser. Checked on the fresh page (before any
+// street-view interaction) so it is independent of later map state.
+const base = url.endsWith('/') ? url : url + '/';
+const svgReport = await page.evaluate(async (b) => {
+  const md = await (await fetch(b + 'SPECIFICATIONS.md')).text();
+  const files = [...md.matchAll(/\(assets\/spec\/([\w-]+\.svg)\)/g)].map((m) => m[1]);
+  const results = [];
+  for (const f of files) {
+    const ok = await new Promise((res) => {
+      const img = new Image();
+      img.onload = () => res(img.naturalWidth > 0 && img.naturalHeight > 0);
+      img.onerror = () => res(false);
+      img.src = b + 'assets/spec/' + f;
+    });
+    results.push({ f, ok });
+  }
+  return { count: files.length, bad: results.filter((r) => !r.ok).map((r) => r.f) };
+}, base);
+assert.ok(svgReport.count >= 8, `expected ≥8 spec illustrations, found ${svgReport.count} (#12)`);
+assert.deepEqual(svgReport.bad, [], `spec illustrations failed to render: ${svgReport.bad.join(', ')} (#12)`);
+console.log(`[e2e] spec illustrations render OK (${svgReport.count}) (#12)`);
+
 // MapLibre 6 ESM + Panoramax source + 3D buildings wired (#1, #2, #19).
 const wiring = await page.evaluate(async () => {
   const mod = await import('./src/main.js');
@@ -73,6 +96,58 @@ const nav = await page.evaluate(async () => {
   window.dispatchEvent(new MouseEvent('mouseup', { clientX: 712, clientY: 400, bubbles: true }));
   const dragChangedYaw = psLook.yaw !== yawBeforeDrag;
   const pictureStableAfterDrag = sv.currentPicture()?.id === pic0;
+  // #5 smooth walk: step to an adjacent panorama (goTo) — position changes,
+  // stays inside (no exit), anchor updates once the next image decodes.
+  const seqPanos = seq.filter((p) => p.type === 'equirectangular');
+  const walkTarget = seqPanos.find((p) => p.id !== pano.id) || seq.find((p) => p.id !== pano.id);
+  let walkedToNext = false;
+  let walkStillInside = false;
+  if (walkTarget) {
+    sv.enterStreetView(map, walkTarget); // inside → goTo (walk)
+    const atTarget = () => {
+      const l = sv._photosphere().lngLat;
+      return l && Math.abs(l[0] - walkTarget.lon) < 1e-9 && Math.abs(l[1] - walkTarget.lat) < 1e-9;
+    };
+    await waitFor(atTarget, 20000);
+    walkedToNext = sv.currentPicture()?.id === walkTarget.id && atTarget() && walkTarget.id !== pic0;
+    walkStillInside = sv.isStreetMode() && sv._photosphere().mode === 'inside';
+  }
+  // #32 + #33: on-screen nearby POI dot must be hittable (cursor) and a drag
+  // ending on it must NOT navigate. Best-effort (skipped if none projects on-screen).
+  let poiChecked = false;
+  let poiHittable = false;
+  let dragOverPoiStable = true;
+  await waitFor(() => map.getLayer('mapmax-nearby-poi'), 8000);
+  // #33: the nearby-POI dots must be screen-aligned (default viewport), so the
+  // visible dot == the hittable area and the cursor changes on hover.
+  const pa = map.getLayer('mapmax-nearby-poi') &&
+    map.getPaintProperty('mapmax-nearby-poi', 'circle-pitch-alignment');
+  const poiViewportAligned = pa === undefined || pa === 'viewport';
+  await waitFor(() => map.getSource('mapmax-nearby-poi') &&
+    map.querySourceFeatures('mapmax-nearby-poi').length > 0, 8000);
+  sv._photosphere().look(0, -55); // look down at the street so ground POI come into view
+  await waitFor(() => false, 400);
+  const poiFeats = map.getSource('mapmax-nearby-poi') ? map.querySourceFeatures('mapmax-nearby-poi') : [];
+  const w = map.getCanvas().clientWidth;
+  const h = map.getCanvas().clientHeight;
+  let p = null;
+  for (const f of poiFeats) {
+    const pp = map.project(f.geometry.coordinates);
+    if (pp.x > 20 && pp.x < w - 20 && pp.y > 20 && pp.y < h - 20) { p = pp; break; }
+  }
+  if (p) {
+    poiChecked = true;
+    poiHittable = map.queryRenderedFeatures([p.x, p.y], { layers: ['mapmax-nearby-poi'] }).length > 0;
+    const before = sv.currentPicture()?.id;
+    const canvas = map.getCanvas();
+    const fire = (t, x, y) => canvas.dispatchEvent(new MouseEvent(t, { clientX: x, clientY: y, bubbles: true, button: 0 }));
+    fire('mousedown', p.x - 40, p.y); // start a drag away from the dot…
+    for (let i = 1; i <= 8; i++) fire('mousemove', p.x - 40 + i * 5, p.y);
+    fire('mouseup', p.x, p.y);       // …and release ON the dot
+    fire('click', p.x, p.y);
+    await waitFor(() => false, 400);
+    dragOverPoiStable = sv.currentPicture()?.id === before;
+  }
   const { tiledLayerIds } = await import('./src/tilebudget.js');
   const tiled = tiledLayerIds(map.getStyle());
   const hiddenInside = tiled.filter((id) => map.getLayer(id) &&
@@ -113,7 +188,8 @@ const nav = await page.evaluate(async () => {
            osmTiledCount: osmTiled.length, panoramaxTiledCount: panoramaxTiled.length,
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            poiSourceExists, yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
-           dragChangedYaw, pictureStableAfterDrag };
+           dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside,
+           poiChecked, poiHittable, dragOverPoiStable, poiViewportAligned };
 });
 if (nav.skipped) {
   console.log('[e2e] WARN: no panorama fetched from sample sequence — enter/exit not exercised');
@@ -137,8 +213,19 @@ if (nav.skipped) {
   assert.ok(nav.fovSyncAfterZoom, 'map FOV != sphere FOV after zoom — desync (#24)');
   assert.ok(nav.dragChangedYaw, 'drag did not look around (#30)');
   assert.ok(nav.pictureStableAfterDrag, 'dragging to look translated to another photosphere (#30)');
-  console.log(`[e2e] enter/exit OK; tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK (OSM ${nav.osmVisibleAtMixed}/${nav.osmTiledCount}, panoramax kept ${nav.panoramaxHiddenAtMixed}/${nav.panoramaxTiledCount} suspended #27); controls OK; FOV sync OK`);
+  assert.ok(nav.walkedToNext, 'walk to an adjacent panorama did not move position (#5)');
+  assert.ok(nav.walkStillInside, 'walk exited street view instead of staying inside (#5)');
+  assert.ok(nav.poiViewportAligned, 'nearby POI dots not screen-aligned — hover cursor cannot work (#33)');
+  if (nav.poiChecked) {
+    assert.ok(nav.poiHittable, 'nearby POI dot is not hittable — hover cursor cannot work (#33)');
+    assert.ok(nav.dragOverPoiStable, 'a drag ending on a POI navigated — look-drag must not move (#32)');
+    console.log('[e2e] POI hittable (#33) + drag-over-POI does not navigate (#32) OK');
+  } else {
+    console.log('[e2e] WARN: no on-screen POI to exercise #32/#33 this run');
+  }
+  console.log(`[e2e] enter/exit OK; walk OK (#5); tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK (OSM ${nav.osmVisibleAtMixed}/${nav.osmTiledCount}, panoramax kept ${nav.panoramaxHiddenAtMixed}/${nav.panoramaxTiledCount} suspended #27); controls OK; FOV sync OK`);
 }
+
 
 // Console must stay clean (#14).
 await page.waitForTimeout(2000);

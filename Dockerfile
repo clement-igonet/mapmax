@@ -3,7 +3,7 @@
 # GitHub Pages serves, so local containers and Pages behave identically.
 FROM docker.io/library/nginx:1.27-alpine
 
-COPY index.html styles.css /usr/share/nginx/html/
+COPY index.html styles.css SPECIFICATIONS.md /usr/share/nginx/html/
 COPY src/ /usr/share/nginx/html/src/
 COPY assets/ /usr/share/nginx/html/assets/
 
