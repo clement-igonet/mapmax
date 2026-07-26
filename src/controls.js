@@ -1,7 +1,7 @@
 // Google-Street-View-style controls layered on the photosphere plugin (#7):
 // keyboard look + advance, wheel/keys FOV zoom, double-click-to-go. Touch drag
 // and pinch live in the plugin itself.
-import { advance, goToNearest } from './navigation.js';
+import { advance } from './navigation.js';
 import { isStreetMode, _photosphere } from './streetview.js';
 
 const LOOK_STEP = 6; // degrees per key press
@@ -42,10 +42,9 @@ export function setupControls(map) {
     ps.zoomFov(e.deltaY > 0 ? FOV_STEP : -FOV_STEP);
   }, { passive: false });
 
-  // Double-click a point → jump to the nearest picture facing that point.
-  map.on('dblclick', (e) => {
-    goToNearest(map, e.lngLat).catch(logNav);
-  });
+  // NOTE: no global double-click-to-go — it teleported on any double-click and
+  // made looking around feel like it moved you (#30). Navigation happens only
+  // by clicking a ground arrow or a nearby POI dot (handlers in navigation.js).
 }
 
 const logNav = (err) => console.error('navigation', err);

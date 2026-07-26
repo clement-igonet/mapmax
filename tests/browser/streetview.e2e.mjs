@@ -61,6 +61,18 @@ const nav = await page.evaluate(async () => {
   const inStreet = sv.isStreetMode();
   // #24: map vertical FOV must equal the sphere's FOV (photo/vector in sync).
   const fovSyncEnter = Math.abs(map.getVerticalFieldOfView() - sv._photosphere()._options.fov) < 0.01;
+  // #30: dragging to look changes the view but must NOT translate to another pano.
+  const pic0 = sv.currentPicture()?.id;
+  const psLook = sv._photosphere();
+  const yawBeforeDrag = psLook.yaw;
+  const container = map.getContainer();
+  container.dispatchEvent(new MouseEvent('mousedown', { clientX: 640, clientY: 400, bubbles: true }));
+  for (let i = 1; i <= 6; i++) {
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 640 + i * 12, clientY: 400, bubbles: true }));
+  }
+  window.dispatchEvent(new MouseEvent('mouseup', { clientX: 712, clientY: 400, bubbles: true }));
+  const dragChangedYaw = psLook.yaw !== yawBeforeDrag;
+  const pictureStableAfterDrag = sv.currentPicture()?.id === pic0;
   const { tiledLayerIds } = await import('./src/tilebudget.js');
   const tiled = tiledLayerIds(map.getStyle());
   const hiddenInside = tiled.filter((id) => map.getLayer(id) &&
@@ -100,7 +112,8 @@ const nav = await page.evaluate(async () => {
            tiledCount: tiled.length, hiddenInside, visibleAfter,
            osmTiledCount: osmTiled.length, panoramaxTiledCount: panoramaxTiled.length,
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
-           poiSourceExists, yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom };
+           poiSourceExists, yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
+           dragChangedYaw, pictureStableAfterDrag };
 });
 if (nav.skipped) {
   console.log('[e2e] WARN: no panorama fetched from sample sequence — enter/exit not exercised');
@@ -122,6 +135,8 @@ if (nav.skipped) {
   assert.ok(nav.minimapShown, 'minimap not shown in street mode (#7)');
   assert.ok(nav.fovSyncEnter, 'map FOV != sphere FOV on enter — photo/vector desync (#24)');
   assert.ok(nav.fovSyncAfterZoom, 'map FOV != sphere FOV after zoom — desync (#24)');
+  assert.ok(nav.dragChangedYaw, 'drag did not look around (#30)');
+  assert.ok(nav.pictureStableAfterDrag, 'dragging to look translated to another photosphere (#30)');
   console.log(`[e2e] enter/exit OK; tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK (OSM ${nav.osmVisibleAtMixed}/${nav.osmTiledCount}, panoramax kept ${nav.panoramaxHiddenAtMixed}/${nav.panoramaxTiledCount} suspended #27); controls OK; FOV sync OK`);
 }
 
