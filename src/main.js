@@ -3,7 +3,8 @@
 import * as maplibregl from 'maplibre-gl';
 import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { enterStreetView, exitStreetView, isStreetMode } from './streetview.js';
+import { enterStreetView, exitStreetView, isStreetMode, setBlend } from './streetview.js';
+import { sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 
@@ -61,6 +62,7 @@ onPictureClick(map, async (id) => {
     status('Loading image…');
     await enterStreetView(map, pic);
     document.getElementById('exit-street').hidden = false;
+    document.getElementById('blend-control').hidden = false;
     status(`${pic.type} by ${pic.producer || 'unknown'} — drag to look, click a ground arrow to walk, Esc to exit.`);
   } catch (err) {
     console.error(err);
@@ -70,9 +72,14 @@ onPictureClick(map, async (id) => {
   }
 });
 
+const blendSlider = document.getElementById('blend');
+blendSlider.addEventListener('input', () => setBlend(sliderToBlend(blendSlider.value)));
+
 const exitBtn = document.getElementById('exit-street');
 const leaveStreetUI = () => {
   exitBtn.hidden = true;
+  document.getElementById('blend-control').hidden = true;
+  blendSlider.value = '100';
   status('Zoom in and click a Panoramax picture dot.');
 };
 exitBtn.addEventListener('click', () => {

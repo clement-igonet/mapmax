@@ -110,6 +110,7 @@ export class Photosphere {
         this._dragging = false;
         this._lookTargetDistanceMetres = 1;
         this._opacity = 0;
+        this._blend = 1; // steady-state opacity while inside (1 = photo only)
         this._sphereCenterOffset = [0, 0, 0];
         this._gl = null;
         this._layerCtx = null;
@@ -135,6 +136,13 @@ export class Photosphere {
 
     get lngLat() {
         return this._options.lngLat;
+    }
+
+    // Steady-state photo opacity while inside — lets vector layers behind the
+    // sphere show through for photo↔mixed↔vector blending (mapmax #6).
+    blend(alpha) {
+        this._blend = Math.max(0, Math.min(1, alpha));
+        this._map.triggerRepaint();
     }
 
     // Enter the photosphere. Optional target = {lngLat, imageUrl, bearing}
@@ -298,7 +306,7 @@ export class Photosphere {
                 gl.uniform1f(this.uniforms.uPitch, self._pitchDeg * Math.PI / 180);
                 gl.uniform1f(this.uniforms.uFovY, self._options.fov * Math.PI / 180);
                 gl.uniform1f(this.uniforms.uAspect, gl.drawingBufferWidth / gl.drawingBufferHeight);
-                gl.uniform1f(this.uniforms.uAlpha, self._opacity);
+                gl.uniform1f(this.uniforms.uAlpha, self._opacity * self._blend);
                 gl.uniform3f(this.uniforms.uSphereCenterOffset, ...self._sphereCenterOffset);
                 gl.uniform1f(this.uniforms.uSphereRadius, self._options.radius);
 
