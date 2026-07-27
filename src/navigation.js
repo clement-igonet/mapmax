@@ -1,51 +1,162 @@
-// Navigation between photospheres, rendered as DOM markers (maplibregl.Marker)
-// rather than WebGL layers. At the very-low street camera + high pitch,
-// MapLibre near-plane-clips ground geometry and its feature query returns
-// nothing, so fill/circle layers looked cropped and weren't hoverable/clickable
-// (#26, #33, and the "navigation blocked" reports). DOM markers are never
-// near-plane-clipped, are natively hoverable/clickable, and — with map
-// alignment — the arrows still lie on the street pointing toward the target.
-import { Marker } from 'maplibre-gl';
+// Navigation between photospheres, rendered INTO the panorama (incrusted GL
+// ground layers on the road), pointing to neighbouring 360° photospheres and
+// clickable to walk there.
+//
+// Since #7932 (vendored MapLibre) ground symbol/circle layers render correctly
+// on the road even at eye-level pitch. queryRenderedFeatures is still unreliable
+// at that pitch, so hit-testing (click + hover cursor) is done in SCREEN space
+// via map.project() of each feature — robust at any pitch.
 import { chooseByHeading, pickArrows } from './arrows.js';
 import { STREET_POI_RADIUS_M } from './config.js';
 import { distanceM, isDragGesture } from './geo.js';
 import { getPicture, searchNearby } from './panoramax.js';
-import { currentPicture, enterStreetView, onPictureChanged } from './streetview.js';
+import { currentPicture, enterStreetView, isStreetMode, onPictureChanged } from './streetview.js';
 
-let arrowMarkers = [];
-let poiMarkers = [];
+const ARROW_SRC = 'mapmax-nav-arrows';
+const ARROW_LAYER = 'mapmax-nav-arrows';
+const POI_SRC = 'mapmax-nav-poi';
+const POI_LAYER = 'mapmax-nav-poi';
+const EMPTY = { type: 'FeatureCollection', features: [] };
+const HIT_PX = 26; // click/hover tolerance around a feature's screen point
+
+let arrows = []; // [{ lngLat:[lon,lat], targetId, bearing }]
+let pois = []; //   [{ lngLat:[lon,lat], id }]
 let navigating = false;
+let downPoint = null;
 
 export function setupNavigation(map) {
   onPictureChanged((pic) => {
-    if (!pic) return clearMarkers();
+    if (!pic) return clearNav(map);
     refresh(map, pic).catch((err) => console.error('nav', err));
+  });
+
+  map.on('mousedown', (e) => (downPoint = e.point));
+
+  map.on('click', (e) => {
+    if (!isStreetMode() || navigating) return;
+    if (downPoint && isDragGesture(downPoint.x, downPoint.y, e.point.x, e.point.y)) return; // look-drag
+    const hit = nearestHit(map, e.point);
+    if (hit) go(map, hit);
+  });
+
+  map.on('mousemove', (e) => {
+    if (!isStreetMode()) return;
+    map.getCanvas().style.cursor = nearestHit(map, e.point) ? 'pointer' : '';
   });
 }
 
-function clearMarkers() {
-  for (const m of arrowMarkers) m.remove();
-  for (const m of poiMarkers) m.remove();
-  arrowMarkers = [];
-  poiMarkers = [];
+// The clickable target whose projected screen position is closest to `point`,
+// within HIT_PX — arrows first (they sit on the near road), then POI dots.
+function nearestHit(map, point) {
+  let best = null;
+  let bestD = HIT_PX;
+  for (const a of arrows) {
+    const d = screenDist(map, a.lngLat, point);
+    if (d < bestD) { bestD = d; best = a.targetId; }
+  }
+  for (const p of pois) {
+    const d = screenDist(map, p.lngLat, point);
+    if (d < bestD) { bestD = d; best = p.id; }
+  }
+  return best;
 }
 
-// Rebuild arrows + nearby POI markers around the current picture, bounded to
-// STREET_POI_RADIUS_M (#27) — the same fetch feeds both.
+function screenDist(map, lngLat, point) {
+  const p = map.project(lngLat);
+  return Math.hypot(p.x - point.x, p.y - point.y);
+}
+
 async function refresh(map, pic) {
+  ensureLayers(map);
   const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
-  // Only offer 360° panoramas: flat pictures can't be shown in the sphere yet,
-  // so never route navigation to them (#40).
+  // Only route to 360° panoramas (flat pictures can't be a photosphere yet, #40).
   const pano = candidates.filter((c) => c.type === 'equirectangular');
-  clearMarkers();
-  for (const a of pickArrows(pic, pano)) {
-    arrowMarkers.push(makeArrowMarker(map, a));
+  arrows = pickArrows(pic, pano).map((a) => ({ lngLat: [a.lon, a.lat], targetId: a.targetId, bearing: a.bearing }));
+  pois = pano
+    .filter((c) => c.id !== pic.id && distanceM(pic.lon, pic.lat, c.lon, c.lat) <= STREET_POI_RADIUS_M)
+    .map((c) => ({ lngLat: [c.lon, c.lat], id: c.id }));
+  map.getSource(ARROW_SRC).setData({
+    type: 'FeatureCollection',
+    features: arrows.map((a) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: a.lngLat },
+      properties: { bearing: a.bearing },
+    })),
+  });
+  map.getSource(POI_SRC).setData({
+    type: 'FeatureCollection',
+    features: pois.map((p) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: p.lngLat }, properties: {} })),
+  });
+}
+
+function clearNav(map) {
+  arrows = [];
+  pois = [];
+  map.getSource(ARROW_SRC)?.setData(EMPTY);
+  map.getSource(POI_SRC)?.setData(EMPTY);
+  map.getCanvas().style.cursor = '';
+}
+
+function ensureLayers(map) {
+  if (!map.hasImage('nav-arrow')) map.addImage('nav-arrow', makeArrowImage(), { pixelRatio: 2 });
+  // POI dots first, arrows on top — both above the photosphere custom layer
+  // (added later than it), so they draw incrusted over the panorama.
+  if (!map.getSource(POI_SRC)) map.addSource(POI_SRC, { type: 'geojson', data: EMPTY });
+  if (!map.getLayer(POI_LAYER)) {
+    map.addLayer({
+      id: POI_LAYER,
+      type: 'circle',
+      source: POI_SRC,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 17, 4, 22, 9],
+        'circle-color': '#2962ff',
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 2,
+        'circle-opacity': 0.95,
+        'circle-pitch-alignment': 'map', // lie on the road (incrusted)
+      },
+    });
   }
-  for (const c of pano) {
-    if (c.id === pic.id) continue;
-    if (distanceM(pic.lon, pic.lat, c.lon, c.lat) > STREET_POI_RADIUS_M) continue;
-    poiMarkers.push(makePoiMarker(map, c));
+  if (!map.getSource(ARROW_SRC)) map.addSource(ARROW_SRC, { type: 'geojson', data: EMPTY });
+  if (!map.getLayer(ARROW_LAYER)) {
+    map.addLayer({
+      id: ARROW_LAYER,
+      type: 'symbol',
+      source: ARROW_SRC,
+      layout: {
+        'icon-image': 'nav-arrow',
+        'icon-rotate': ['get', 'bearing'],
+        'icon-rotation-alignment': 'map',
+        'icon-pitch-alignment': 'map', // flat on the road, pointing at the target
+        'icon-anchor': 'center',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 17, 0.4, 22, 0.9],
+      },
+    });
   }
+}
+
+// White chevron with a dark outline, centred in its icon (never self-clipped),
+// pointing north so icon-rotate can take the target bearing directly.
+function makeArrowImage() {
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(64, 16);
+  ctx.lineTo(112, 112);
+  ctx.lineTo(64, 88);
+  ctx.lineTo(16, 112);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.strokeStyle = 'rgba(20,40,90,0.9)';
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  ctx.fill();
+  return ctx.getImageData(0, 0, size, size);
 }
 
 function go(map, id) {
@@ -56,48 +167,14 @@ function go(map, id) {
     .finally(() => { navigating = false; });
 }
 
-// A click that ends a >6px drag is a look-around, not a tap — don't navigate (#32).
-function onTapNotDrag(el, handler) {
-  let down = null;
-  el.addEventListener('mousedown', (e) => { down = [e.clientX, e.clientY]; });
-  el.addEventListener('click', (e) => {
-    if (down && isDragGesture(down[0], down[1], e.clientX, e.clientY)) return;
-    handler();
-  });
-}
-
-function makeArrowMarker(map, a) {
-  const el = document.createElement('div');
-  el.className = 'nav-arrow';
-  el.title = 'Walk here';
-  el.innerHTML =
-    '<svg viewBox="0 0 40 40" width="44" height="44" aria-hidden="true">' +
-    '<polygon points="20,3 37,37 20,28 3,37" fill="#ffffff" ' +
-    'stroke="rgba(20,40,90,0.9)" stroke-width="2.5" stroke-linejoin="round"/></svg>';
-  onTapNotDrag(el, () => go(map, a.targetId));
-  // Map-aligned so the chevron lies on the street and points toward the target.
-  return new Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map', rotation: a.bearing })
-    .setLngLat([a.lon, a.lat])
-    .addTo(map);
-}
-
-function makePoiMarker(map, c) {
-  const el = document.createElement('div');
-  el.className = 'nav-poi';
-  el.title = 'Go to this picture';
-  el.style.background = c.type === 'equirectangular' ? '#2962ff' : '#ff6f00';
-  onTapNotDrag(el, () => go(map, c.id));
-  return new Marker({ element: el }).setLngLat([c.lon, c.lat]).addTo(map);
-}
-
 export async function navigateTo(map, pictureId) {
   const pic = await getPicture(pictureId);
   await enterStreetView(map, pic);
   return pic;
 }
 
-// Walk toward `headingDeg` (keyboard advance): pick the arrow best aligned with
-// where the user is looking and move to it (SPECIFICATIONS.md §2.5).
+// Walk toward `headingDeg` (keyboard advance): the arrow best aligned with the
+// look direction (SPECIFICATIONS.md §2.5).
 export async function advance(map, headingDeg) {
   const pic = currentPicture();
   if (!pic) return null;
@@ -108,22 +185,20 @@ export async function advance(map, headingDeg) {
   return navigateTo(map, arrow.targetId);
 }
 
-// Jump to the picture nearest a clicked map point (double-click-to-go).
+// Jump to the picture nearest a clicked map point (double-click-to-go helper).
 export async function goToNearest(map, lngLat, maxMeters = 30) {
   const [lon, lat] = Array.isArray(lngLat) ? lngLat : [lngLat.lng, lngLat.lat];
   const candidates = await searchNearby(lon, lat, maxMeters, 40);
   let best = null;
   let bestD = Infinity;
   for (const c of candidates) {
+    if (c.type !== 'equirectangular') continue;
     const d = distanceM(lon, lat, c.lon, c.lat);
-    if (d < bestD) {
-      bestD = d;
-      best = c;
-    }
+    if (d < bestD) { bestD = d; best = c; }
   }
   if (!best) return null;
   return enterStreetView(map, best);
 }
 
 // Test/introspection helper.
-export const _markerCounts = () => ({ arrows: arrowMarkers.length, poi: poiMarkers.length });
+export const _navCounts = () => ({ arrows: arrows.length, poi: pois.length });

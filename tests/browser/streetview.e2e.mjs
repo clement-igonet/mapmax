@@ -134,21 +134,21 @@ const nav = await page.evaluate(async () => {
   const backdropApplied = map.getPaintProperty('background', 'background-color') === '#d7d9dc' &&
     getComputedStyle(document.getElementById('map')).backgroundColor === 'rgb(215, 217, 220)' &&
     !!map.getSky();
-  // #26/#33: arrows + POI are DOM markers (never near-plane-clipped, natively
-  // hoverable/clickable). Assert markers exist, the cursor is a pointer, and a
-  // drag ending on a marker does NOT navigate (#32).
-  await waitFor(() => document.querySelectorAll('.nav-arrow, .nav-poi').length > 0, 10000);
-  const markerCount = document.querySelectorAll('.nav-arrow, .nav-poi').length;
-  const markerEl = document.querySelector('.nav-poi') || document.querySelector('.nav-arrow');
-  const markerCursorPointer = markerEl ? getComputedStyle(markerEl).cursor === 'pointer' : false;
-  // simulate a look-drag that ends on the marker element → must not navigate
+  // arrows + POI are now incrusted GL ground layers (#7932). Assert the layers
+  // exist and there are nav targets, and that clicking empty space (far from any
+  // feature) does NOT navigate (screen-space hit-test, drag-safe #32).
+  const navMod = await import('./src/navigation.js');
+  await waitFor(() => map.getLayer('mapmax-nav-arrows') &&
+    (navMod._navCounts().arrows + navMod._navCounts().poi) > 0, 10000);
+  const nc = navMod._navCounts();
+  const navTargets = nc.arrows + nc.poi;
+  const hasGlNavLayers = !!map.getLayer('mapmax-nav-arrows') && !!map.getLayer('mapmax-nav-poi');
   const beforeId = sv.currentPicture()?.id;
-  if (markerEl) {
-    markerEl.dispatchEvent(new MouseEvent('mousedown', { clientX: 400, clientY: 400, bubbles: true }));
-    markerEl.dispatchEvent(new MouseEvent('click', { clientX: 460, clientY: 402, bubbles: true }));
-    await waitFor(() => false, 300);
-  }
-  const markerDragStable = sv.currentPicture()?.id === beforeId;
+  const canvas = map.getCanvas();
+  const fire = (t, x, y) => canvas.dispatchEvent(new MouseEvent(t, { clientX: x, clientY: y, bubbles: true, button: 0 }));
+  fire('mousedown', 6, 6); fire('click', 6, 6); // top-left corner: no feature there
+  await waitFor(() => false, 300);
+  const clickEmptyStable = sv.currentPicture()?.id === beforeId;
   const { tiledLayerIds } = await import('./src/tilebudget.js');
   const tiled = tiledLayerIds(map.getStyle());
   const hiddenInside = tiled.filter((id) => map.getLayer(id) &&
@@ -183,14 +183,14 @@ const nav = await page.evaluate(async () => {
   await waitFor(() => !sv.isStreetMode(), 8000);
   const visibleAfter = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
-  const markersAfterExit = document.querySelectorAll('.nav-arrow, .nav-poi').length;
+  const navAfterExit = navMod._navCounts().arrows + navMod._navCounts().poi;
   return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode,
            tiledCount: tiled.length, hiddenInside, visibleAfter,
            osmTiledCount: osmTiled.length, panoramaxTiledCount: panoramaxTiled.length,
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside,
-           markerCount, markerCursorPointer, markerDragStable, markersAfterExit,
+           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
 });
@@ -217,10 +217,10 @@ if (nav.skipped) {
   assert.ok(nav.pictureStableAfterDrag, 'dragging to look translated to another photosphere (#30)');
   assert.ok(nav.walkedToNext, 'walk to an adjacent panorama did not move position (#5)');
   assert.ok(nav.walkStillInside, 'walk exited street view instead of staying inside (#5)');
-  assert.ok(nav.markerCount > 0, 'no arrow/POI markers rendered (#26/#33)');
-  assert.ok(nav.markerCursorPointer, 'marker cursor is not a pointer — not hoverable/clickable (#33)');
-  assert.ok(nav.markerDragStable, 'a drag ending on a marker navigated — look-drag must not move (#32)');
-  assert.equal(nav.markersAfterExit, 0, 'navigation markers not cleared on exit');
+  assert.ok(nav.hasGlNavLayers, 'incrusted GL nav layers (arrows/POI) missing');
+  assert.ok(nav.navTargets > 0, 'no navigation targets (arrows/POI) to neighbour 360s');
+  assert.ok(nav.clickEmptyStable, 'clicking empty space navigated — must only navigate on a feature (#32)');
+  assert.equal(nav.navAfterExit, 0, 'navigation targets not cleared on exit');
   assert.ok(nav.picInfoShowsId, 'page does not show the current picture id (#34)');
   assert.ok(nav.enteredIs360, 'entered a non-360 picture into the sphere (#40)');
   assert.ok(nav.picInfoHasBadge, '360/flat badge missing (#40)');
@@ -228,7 +228,7 @@ if (nav.skipped) {
   assert.ok(nav.backdropApplied, 'street mode did not replace the raw-white background with a ground tone (#37)');
   assert.notEqual(nav.bgAfterExit, '#d7d9dc', 'street backdrop not restored on exit (#37)');
   console.log('[e2e] street backdrop applied + restored on exit (#37) OK');
-  console.log(`[e2e] markers OK (${nav.markerCount}, pointer+drag-safe #26/#32/#33)`);
+  console.log(`[e2e] incrusted nav OK (${nav.navTargets} targets, GL layers, click-safe)`);
   console.log(`[e2e] enter/exit OK; walk OK (#5); tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK (OSM ${nav.osmVisibleAtMixed}/${nav.osmTiledCount}, panoramax kept ${nav.panoramaxHiddenAtMixed}/${nav.panoramaxTiledCount} suspended #27); controls OK; FOV sync OK`);
 }
 
