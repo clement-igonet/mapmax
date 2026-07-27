@@ -132,7 +132,8 @@ const nav = await page.evaluate(async () => {
   // #37: street mode replaces the raw-white background with a ground tone so the
   // vector-only view is never an empty white void.
   const backdropApplied = map.getPaintProperty('background', 'background-color') === '#d7d9dc' &&
-    getComputedStyle(document.getElementById('map')).backgroundColor === 'rgb(215, 217, 220)';
+    getComputedStyle(document.getElementById('map')).backgroundColor === 'rgb(215, 217, 220)' &&
+    !!map.getSky();
   // #26/#33: arrows + POI are DOM markers (never near-plane-clipped, natively
   // hoverable/clickable). Assert markers exist, the cursor is a pointer, and a
   // drag ending on a marker does NOT navigate (#32).

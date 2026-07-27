@@ -10,6 +10,19 @@
 
 export const STREET_GROUND_COLOR = '#d7d9dc'; // neutral pavement grey
 
+// Native sky (MapLibre 6): a blue sky fading through a pale horizon into the
+// ground tone, so the above-horizon area is a real sky (not raw canvas) and the
+// horizon haze visually connects to the ground — the environment always fills
+// the viewport at any pitch (#43).
+const STREET_SKY = {
+  'sky-color': '#a6c8f0',
+  'horizon-color': '#e6eef7',
+  'fog-color': STREET_GROUND_COLOR,
+  'sky-horizon-blend': 0.6,
+  'horizon-fog-blend': 0.6,
+  'fog-ground-blend': 0.6,
+};
+
 let savedBg = null;
 let applied = false;
 
@@ -20,6 +33,9 @@ export function applyStreetBackdrop(map) {
     savedBg = map.getPaintProperty('background', 'background-color') ?? null;
     map.setPaintProperty('background', 'background-color', STREET_GROUND_COLOR);
   } catch { /* style without a background layer */ }
+  try {
+    map.setSky(STREET_SKY);
+  } catch { /* sky unsupported */ }
 }
 
 export function removeStreetBackdrop(map) {
@@ -27,6 +43,9 @@ export function removeStreetBackdrop(map) {
   applied = false;
   try {
     if (savedBg != null) map.setPaintProperty('background', 'background-color', savedBg);
+  } catch { /* ignore */ }
+  try {
+    map.setSky(null);
   } catch { /* ignore */ }
   savedBg = null;
 }
