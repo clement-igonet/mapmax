@@ -131,27 +131,6 @@ body {
   width: 200px;
 }
 
-/* Ground navigation arrows + nearby-picture dots are DOM markers so they are
-   never near-plane-clipped and are natively hoverable/clickable (#26, #33). */
-.nav-arrow {
-  cursor: pointer;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
-}
-
-.nav-poi {
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  cursor: pointer;
-  box-shadow: 0 0 3px rgba(0, 0, 0, 0.45);
-}
-
-.nav-poi:hover,
-.nav-arrow:hover {
-  filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.9));
-}
-
 /* The MapLibre canvas is transparent where nothing renders; at the very-low
    street camera the lower/upper frustum is uncovered, so without this the page
    white shows as an empty void. Fill the container with the ground tone so the
