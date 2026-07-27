@@ -24,10 +24,13 @@ export const STREET_MAX_PITCH = 179;
 export const STREET_POI_RADIUS_M = 50;
 
 // Photosphere plugin defaults (SPECIFICATIONS.md §2.2, §2.5).
+// fov 80: at eye height the 75° view left the near foreground unrendered by
+// MapLibre (an empty band, #43); 80° tilts the bottom edge down enough for the
+// ground to render to the screen edge, with no perceptible widening.
 export const PHOTOSPHERE = {
   eyeHeight: 1.6,
   radius: 6,
-  fov: 75,
+  fov: 80,
   durationMs: 1200,
   dragSensitivity: 0.15,
   minPitch: -85,

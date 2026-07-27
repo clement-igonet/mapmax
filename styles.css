@@ -157,7 +157,16 @@ body {
    white shows as an empty void. Fill the container with the ground tone so the
    void matches the (recolored) ground plane — no raw white (#37). */
 body.street-mode #map {
+  /* Below the horizon MapLibre renders no ground at eye-level pitch; the
+     transparent canvas shows this. A ground tone with a subtle recede gradient
+     reads as a floor instead of a raw void (#43). Sky above is drawn by
+     map.setSky(). background-color is the flat fallback (and e2e anchor). */
   background-color: #d7d9dc;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(230, 238, 247, 0) 45%,
+    rgba(160, 166, 174, 0.55) 100%
+  );
 }
 
 body.street-mode #map canvas {
