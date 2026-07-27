@@ -9,7 +9,7 @@ Deno.test('deployed page is served and wires the app (issue #1)', async () => {
   const res = await fetch(`${BASE}/index.html`);
   assertEquals(res.status, 200);
   const html = await res.text();
-  assert(html.includes('maplibre-gl@6'), 'MapLibre 6 not referenced (issue #19)');
+  assert(html.includes('vendor/maplibre/maplibre-gl.mjs'), 'vendored MapLibre importmap missing (#19, PR #7932 build)');
   assert(html.includes('maplibre-gl.mjs'), 'ESM maplibre importmap missing (issue #19)');
   assert(html.includes('src/main.js'), 'app module missing');
   assert(html.includes('exit-street'), 'street exit button missing (issue #3)');
@@ -32,6 +32,12 @@ Deno.test('deployed JS modules are served', async () => {
   const plugin = await fetch(`${BASE}/src/vendor/photosphere-plugin.js`);
   assertEquals(plugin.status, 200, 'vendored photosphere plugin not deployed');
   await plugin.body?.cancel();
+  // Vendored MapLibre build (PR #7932) + its shared chunk and module worker.
+  for (const f of ['maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl-worker.mjs', 'maplibre-gl.css']) {
+    const res = await fetch(`${BASE}/vendor/maplibre/${f}`);
+    assertEquals(res.status, 200, `vendored MapLibre ${f} not deployed`);
+    await res.body?.cancel();
+  }
 });
 
 Deno.test('OSM style has fill-extrusion 3D buildings (issue #1)', async () => {

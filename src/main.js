@@ -78,11 +78,19 @@ map.on('style.load', () => {
   status('Zoom in and click a Panoramax picture dot.');
 });
 
-// Sprite icons referenced by the style but absent from its sprite sheet
-// would log a warning per POI type; register a transparent placeholder.
-map.on('styleimagemissing', (e) => {
-  if (!map.hasImage(e.id)) map.addImage(e.id, transparentPixel());
-});
+// Sprite icons referenced by the style but absent from its sprite sheet would
+// log a warning per POI type; register a transparent placeholder. MapLibre main
+// replaced the `styleimagemissing` event with setMissingStyleImageResolver()
+// (which runs before the image is treated as missing) — use it when available,
+// else fall back to the event.
+const addPlaceholder = (id) => {
+  if (!map.hasImage(id)) map.addImage(id, transparentPixel());
+};
+if (typeof map.setMissingStyleImageResolver === 'function') {
+  map.setMissingStyleImageResolver((id) => addPlaceholder(id));
+} else {
+  map.on('styleimagemissing', (e) => addPlaceholder(e.id));
+}
 
 onPictureClick(map, async (id) => {
   status('Loading picture metadata…');
