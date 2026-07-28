@@ -134,29 +134,39 @@ const nav = await page.evaluate(async () => {
   const backdropApplied = map.getPaintProperty('background', 'background-color') === '#d7d9dc' &&
     getComputedStyle(document.getElementById('map')).backgroundColor === 'rgb(215, 217, 220)' &&
     !!map.getSky();
-  // arrows + POI are now incrusted GL ground layers (#7932). Assert the layers
-  // exist and there are nav targets, and that clicking empty space (far from any
-  // feature) does NOT navigate (screen-space hit-test, drag-safe #32).
+  // Ground arrows are now drawn INSIDE the photosphere layer (shader, #26); only
+  // the neighbour POI dots are a MapLibre GL layer. Assert the POI layer exists,
+  // the plugin received the arrows, there are nav targets, and that clicking
+  // empty space does NOT navigate (screen-space hit-test, drag-safe #32).
   const navMod = await import('./src/navigation.js');
-  await waitFor(() => map.getLayer('mapmax-nav-arrows') &&
+  await waitFor(() => map.getLayer('mapmax-nav-poi') &&
     (navMod._navCounts().arrows + navMod._navCounts().poi) > 0, 10000);
   const nc = navMod._navCounts();
   const navTargets = nc.arrows + nc.poi;
-  const hasGlNavLayers = !!map.getLayer('mapmax-nav-arrows') && !!map.getLayer('mapmax-nav-poi');
-  // #26 crop guard on REAL neighbours: every arrow polygon vertex must be >= 4 m
-  // from the camera, else a foreshortened ground polygon crosses the near plane
-  // and is clipped (the cropped arrow). Rotating just moves them across-screen,
-  // so a distance check covers every view direction at once.
-  const { groundArrowPolygon } = await import('./src/arrows.js');
-  const { distanceM } = await import('./src/geo.js');
-  const cam = sv.currentPicture();
-  let minArrowVertexDist = Infinity;
-  for (const a of navMod._navArrows()) {
-    for (const [lon, lat] of groundArrowPolygon(a.lngLat[0], a.lngLat[1], a.bearing, 1.4)[0]) {
-      minArrowVertexDist = Math.min(minArrowVertexDist, distanceM(cam.lon, cam.lat, lon, lat));
+  const ps0 = sv._photosphere();
+  const shaderArrowCount = ps0?._navArrows?.length ?? 0;
+  const hasGlNavLayers = !!map.getLayer('mapmax-nav-poi') && (nc.arrows === 0 || shaderArrowCount === nc.arrows);
+  // #26 crop guard: floor arrows live on the ground plane in the shader — they
+  // span the full viewport and CANNOT be cropped by the map near plane. Prove an
+  // arrow is hittable across a range of grazing pitches (a near-plane-clipped
+  // arrow would vanish from the lower rows). groundPick runs the same maths the
+  // shader draws with, so pickable ⇒ drawn.
+  let arrowsNotClipped = true;
+  if (nc.arrows > 0) {
+    const target = navMod._navArrows()[0];
+    const savedYaw = ps0._yawDeg, savedPitch = ps0._pitchDeg;
+    ps0._yawDeg = target.bearing;
+    const cw = map.getCanvas().clientWidth, chh = map.getCanvas().clientHeight;
+    let hit = false;
+    for (let p = -8; p >= -45 && !hit; p -= 2) {
+      ps0._pitchDeg = p;
+      for (let fy = 0.5; fy <= 0.98; fy += 0.04) {
+        if (ps0.groundPick(cw / 2, chh * fy) === target.targetId) { hit = true; break; }
+      }
     }
+    ps0._yawDeg = savedYaw; ps0._pitchDeg = savedPitch;
+    arrowsNotClipped = hit;
   }
-  const arrowsNotClipped = !Number.isFinite(minArrowVertexDist) || minArrowVertexDist >= 4;
   const beforeId = sv.currentPicture()?.id;
   const canvas = map.getCanvas();
   const fire = (t, x, y) => canvas.dispatchEvent(new MouseEvent(t, { clientX: x, clientY: y, bubbles: true, button: 0 }));
@@ -204,7 +214,7 @@ const nav = await page.evaluate(async () => {
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside,
-           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, minArrowVertexDist,
+           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
 });
@@ -231,9 +241,9 @@ if (nav.skipped) {
   assert.ok(nav.pictureStableAfterDrag, 'dragging to look translated to another photosphere (#30)');
   assert.ok(nav.walkedToNext, 'walk to an adjacent panorama did not move position (#5)');
   assert.ok(nav.walkStillInside, 'walk exited street view instead of staying inside (#5)');
-  assert.ok(nav.hasGlNavLayers, 'incrusted GL nav layers (arrows/POI) missing');
+  assert.ok(nav.hasGlNavLayers, 'incrusted nav layers missing (POI GL layer / shader arrows out of sync)');
   assert.ok(nav.navTargets > 0, 'no navigation targets (arrows/POI) to neighbour 360s');
-  assert.ok(nav.arrowsNotClipped, `arrow polygon vertex ${nav.minArrowVertexDist?.toFixed?.(1)} m from camera — would be cropped (#26)`);
+  assert.ok(nav.arrowsNotClipped, 'shader ground arrow was not hittable across grazing pitches — would be cropped (#26)');
   assert.ok(nav.clickEmptyStable, 'clicking empty space navigated — must only navigate on a feature (#32)');
   assert.equal(nav.navAfterExit, 0, 'navigation targets not cleared on exit');
   assert.ok(nav.picInfoShowsId, 'page does not show the current picture id (#34)');

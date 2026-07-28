@@ -20,6 +20,8 @@ const VERTEX_SHADER_SOURCE = `
     }
 `;
 
+const MAX_ARROWS = 6;
+const ARROW_GROUND_DIST = 5; // where a ground arrow sits, from the eye (m)
 const FRAGMENT_SHADER_SOURCE = `
     precision highp float;
     varying vec2 vNdc;
@@ -31,6 +33,20 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform vec3 uSphereCenterOffset;
     uniform float uSphereRadius;
     uniform sampler2D uPanorama;
+    uniform float uEyeHeight;      // eye height above the ground (m)
+    uniform int uArrowCount;
+    uniform vec2 uArrows[${MAX_ARROWS}]; // ground positions (east, north) m from the eye
+
+    // A filled arrowhead in the arrow's local frame (x = right, y = forward),
+    // tapering from a base to a tip that points toward the target.
+    float arrowMask(vec2 lp) {
+        float base = -0.7, tip = 1.7, halfW = 1.15;
+        if (lp.y < base || lp.y > tip) return 0.0;
+        float f = (lp.y - base) / (tip - base);         // 0 at base .. 1 at tip
+        float w = halfW * (1.0 - f);                     // taper to a point
+        return abs(lp.x) < w ? 1.0 : 0.0;
+    }
+
     void main() {
         float tanHalfFovY = tan(uFovY * 0.5);
         float tanHalfFovX = tanHalfFovY * uAspect;
@@ -42,34 +58,60 @@ const FRAGMENT_SHADER_SOURCE = `
 
         vec3 viewDir = normalize(forward + right * (vNdc.x * tanHalfFovX) + up * (vNdc.y * tanHalfFovY));
 
+        // Base colour: the panorama sphere.
+        vec3 rgb = vec3(0.0);
+        float a = 0.0;
         vec3 originToCenter = -uSphereCenterOffset;
         float b = dot(originToCenter, viewDir);
         float c = dot(originToCenter, originToCenter) - uSphereRadius * uSphereRadius;
         float discriminant = b * b - c;
-        if (discriminant < 0.0) {
-            discard;
+        if (discriminant >= 0.0) {
+            float sq = sqrt(discriminant);
+            float tNear = -b - sq;
+            float tFar = -b + sq;
+            float t = tNear > 0.0 ? tNear : tFar;
+            if (t >= 0.0) {
+                vec3 normal = normalize(viewDir * t - uSphereCenterOffset);
+                float theta = atan(normal.x, normal.y);
+                float phi = asin(clamp(normal.z, -1.0, 1.0));
+                vec4 color = texture2D(uPanorama, vec2(0.5 + theta / (2.0 * 3.14159265359), 0.5 - phi / 3.14159265359));
+                rgb = color.rgb;
+                a = color.a * uAlpha;
+            }
         }
-        float sqrtDiscriminant = sqrt(discriminant);
-        float tNear = -b - sqrtDiscriminant;
-        float tFar = -b + sqrtDiscriminant;
-        float t = tNear > 0.0 ? tNear : tFar;
-        if (t < 0.0) {
-            discard;
+
+        // Ground navigation arrows, drawn on the floor plane at z = -uEyeHeight.
+        // Rendered here (in the panorama layer) they cover the whole viewport and
+        // are never clipped by MapLibre's map-plane near clip (mapmax #26).
+        if (viewDir.z < -0.0001 && uArrowCount > 0) {
+            float tg = -uEyeHeight / viewDir.z;
+            vec2 g = viewDir.xy * tg;                    // ground point (east, north) m
+            float mask = 0.0;
+            for (int i = 0; i < ${MAX_ARROWS}; i++) {
+                if (i >= uArrowCount) break;
+                vec2 ap = uArrows[i];
+                if (dot(ap, ap) < 1e-4) continue;
+                vec2 fwd = normalize(ap);
+                vec2 rgt = vec2(fwd.y, -fwd.x);
+                vec2 d = g - ap;
+                mask = max(mask, arrowMask(vec2(dot(d, rgt), dot(d, fwd))));
+            }
+            if (mask > 0.0) {
+                rgb = mix(rgb, vec3(1.0), 0.85);         // white arrow over the photo
+                a = max(a, 0.85);                        // always visible, any blend
+            }
         }
 
-        vec3 intersection = viewDir * t;
-        vec3 normal = normalize(intersection - uSphereCenterOffset);
-
-        float theta = atan(normal.x, normal.y);
-        float phi = asin(clamp(normal.z, -1.0, 1.0));
-
-        float u = 0.5 + theta / (2.0 * 3.14159265359);
-        float v = 0.5 - phi / 3.14159265359;
-
-        vec4 color = texture2D(uPanorama, vec2(u, v));
-        gl_FragColor = vec4(color.rgb, color.a * uAlpha);
+        if (a <= 0.0) discard;
+        gl_FragColor = vec4(rgb, a);
     }
 `;
+
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const normalize3 = (v) => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+};
 
 function compileShader(gl, type, source) {
     const shader = gl.createShader(type);
@@ -112,6 +154,7 @@ export class Photosphere {
         this._opacity = 0;
         this._blend = 1; // steady-state opacity while inside (1 = photo only)
         this._savedFov = null; // map's vertical FOV before entering
+        this._navArrows = []; // [{ bearing (deg), id }] rendered on the floor
         this._sphereCenterOffset = [0, 0, 0];
         this._gl = null;
         this._layerCtx = null;
@@ -165,6 +208,53 @@ export class Photosphere {
 
     get yaw() { return this._yawDeg; }
     get pitch() { return this._pitchDeg; }
+
+    // Ground navigation arrows rendered inside the panorama layer (mapmax #26).
+    // `list` = [{ bearing (deg toward the target), id }].
+    setNavArrows(list) {
+        this._navArrows = Array.isArray(list) ? list.slice(0, MAX_ARROWS) : [];
+        this._map.triggerRepaint();
+    }
+
+    // The id of the arrow under screen pixel (px, py), or null. Ray-casts the
+    // floor with the same view maths as the shader (works at any pitch).
+    groundPick(px, py) {
+        const canvas = this._map.getCanvas();
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        const ndcX = (px / w) * 2 - 1;
+        const ndcY = 1 - (py / h) * 2;
+        const tanY = Math.tan((this._options.fov * Math.PI / 180) / 2);
+        const tanX = tanY * (w / h);
+        const yaw = this._yawDeg * Math.PI / 180;
+        const pitch = this._pitchDeg * Math.PI / 180;
+        const forward = [Math.cos(pitch) * Math.sin(yaw), Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch)];
+        const right = normalize3(cross3(forward, [0, 0, 1]));
+        const up = cross3(right, forward);
+        const vd = normalize3([
+            forward[0] + right[0] * ndcX * tanX + up[0] * ndcY * tanY,
+            forward[1] + right[1] * ndcX * tanX + up[1] * ndcY * tanY,
+            forward[2] + right[2] * ndcX * tanX + up[2] * ndcY * tanY,
+        ]);
+        if (vd[2] >= -1e-4) return null; // not looking at the floor
+        const t = -this._options.eyeHeight / vd[2];
+        const g = [vd[0] * t, vd[1] * t];
+        for (const a of this._navArrows) {
+            const br = a.bearing * Math.PI / 180;
+            const ap = [ARROW_GROUND_DIST * Math.sin(br), ARROW_GROUND_DIST * Math.cos(br)];
+            const len = Math.hypot(ap[0], ap[1]) || 1;
+            const fwd = [ap[0] / len, ap[1] / len];
+            const rgt = [fwd[1], -fwd[0]];
+            const d = [g[0] - ap[0], g[1] - ap[1]];
+            const ly = d[0] * fwd[0] + d[1] * fwd[1];
+            const lx = d[0] * rgt[0] + d[1] * rgt[1];
+            const base = -0.7, tip = 1.7, halfW = 1.15;
+            if (ly > base && ly < tip && Math.abs(lx) < halfW * (1 - (ly - base) / (tip - base))) {
+                return a.id;
+            }
+        }
+        return null;
+    }
 
     // Look around by a delta (degrees) — drives keyboard / touch controls
     // outside the built-in mouse drag (mapmax #7).
@@ -333,7 +423,7 @@ export class Photosphere {
 
                 this.aPosition = gl.getAttribLocation(this.program, 'aPosition');
                 this.uniforms = {};
-                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama']) {
+                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uEyeHeight', 'uArrowCount', 'uArrows']) {
                     this.uniforms[name] = gl.getUniformLocation(this.program, name);
                 }
 
@@ -381,6 +471,19 @@ export class Photosphere {
                 gl.uniform1f(this.uniforms.uAlpha, self._opacity * self._blend);
                 gl.uniform3f(this.uniforms.uSphereCenterOffset, ...self._sphereCenterOffset);
                 gl.uniform1f(this.uniforms.uSphereRadius, self._options.radius);
+
+                // Ground navigation arrows (mapmax #26): positions on the floor,
+                // at a fixed distance toward each target bearing.
+                gl.uniform1f(this.uniforms.uEyeHeight, self._options.eyeHeight);
+                const n = Math.min(MAX_ARROWS, self._navArrows.length);
+                gl.uniform1i(this.uniforms.uArrowCount, n);
+                const buf = new Float32Array(MAX_ARROWS * 2);
+                for (let i = 0; i < n; i++) {
+                    const br = self._navArrows[i].bearing * Math.PI / 180;
+                    buf[i * 2] = ARROW_GROUND_DIST * Math.sin(br);
+                    buf[i * 2 + 1] = ARROW_GROUND_DIST * Math.cos(br);
+                }
+                gl.uniform2fv(this.uniforms.uArrows, buf);
 
                 gl.drawArrays(gl.TRIANGLES, 0, 3);
                 gl.disable(gl.BLEND);

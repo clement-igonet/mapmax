@@ -7,7 +7,7 @@ const style = {
     openmaptiles: { type: 'vector' },
     ne2_shaded: { type: 'raster' },
     terrain: { type: 'raster-dem' },
-    'mapmax-nav-arrows': { type: 'geojson' },
+    'mapmax-nav-poi': { type: 'geojson' },
     panoramax: { type: 'vector' },
   },
   layers: [
@@ -16,7 +16,7 @@ const style = {
     { id: 'roads', type: 'line', source: 'openmaptiles' },
     { id: 'building-3d', type: 'fill-extrusion', source: 'openmaptiles' },
     { id: 'panoramax-pictures', type: 'circle', source: 'panoramax' },
-    { id: 'nav-arrows', type: 'symbol', source: 'mapmax-nav-arrows' }, // geojson: keep
+    { id: 'nav-poi', type: 'circle', source: 'mapmax-nav-poi' }, // geojson: keep
     { id: 'photosphere', type: 'custom' }, // custom: keep
   ],
 };
