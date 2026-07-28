@@ -1,7 +1,7 @@
 // Unit tests for navigation arrow selection (issue #4).
 import { assert, assertAlmostEquals, assertEquals } from 'jsr:@std/assert@1';
 import { arrowsToGeoJSON, groundArrowPolygon, pickArrows } from '../../src/arrows.js';
-import { bearingBetween, destinationPoint, distanceM } from '../../src/geo.js';
+import { angularDiff, bearingBetween, destinationPoint, distanceM } from '../../src/geo.js';
 
 const cur = { id: 'me', lon: 2.35, lat: 48.85, sequenceId: 'seq-A' };
 const at = (id, bearing, dist, sequenceId = 'seq-A') => {
@@ -21,6 +21,31 @@ Deno.test('pickArrows: one arrow per direction, nearest wins', () => {
   assertAlmostEquals(north.bearing, 0, 0.5);
   assertEquals(north.sameSequence, true);
   assertEquals(arrows.find((a) => a.targetId === 'east').sameSequence, false);
+});
+
+// #55: real-world case (picture adc7432f, heading 221°, GPS ±4 m). The neighbours
+// are jittered off the street; the forward arrow must snap to the heading (221°)
+// and target the best-aligned neighbour, not the closer but off-axis one.
+Deno.test('pickArrows: forward/back arrows snap to the travel heading (#55)', () => {
+  const cam = { id: 'me', lon: 2.35, lat: 48.85, sequenceId: 'A', heading: 221 };
+  const arrows = pickArrows(cam, [
+    at('fwd-true', 226, 3), // down the street, a touch off
+    at('fwd-jitter', 257, 1.4), // closer, but 36° off the street — must NOT win
+    at('fwd-left', 202, 3),
+    at('back', 41, 4), // opposite travel direction (heading + 180)
+  ]);
+  const fwd = arrows.find((a) => Math.abs(angularDiff(a.bearing, 221)) < 1);
+  assert(fwd, 'a forward arrow is drawn along the heading');
+  assertAlmostEquals(fwd.bearing, 221, 0.5); // drawn on the axis, not the GPS bearing
+  assertEquals(fwd.targetId, 'fwd-true'); // aligned neighbour beats the jittered-closer one
+  const back = arrows.find((a) => Math.abs(angularDiff(a.bearing, 41)) < 1);
+  assert(back && back.targetId === 'back', 'a back arrow snaps to heading+180');
+});
+
+Deno.test('pickArrows: with no heading, falls back to per-sector GPS bearings', () => {
+  const cam = { id: 'me', lon: 2.35, lat: 48.85, sequenceId: 'A' }; // no heading
+  const [a] = pickArrows(cam, [at('t', 137, 8)]);
+  assertAlmostEquals(a.bearing, 137, 0.5); // unchanged behaviour when heading absent
 });
 
 Deno.test('pickArrows: filters self, near-duplicates and far pictures', () => {

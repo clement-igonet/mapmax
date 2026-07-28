@@ -15,7 +15,28 @@ export const ARROW_DEFAULTS = {
   // camera near plane and be clipped — even for a very close neighbour (#26).
   minArrowDist: 6,
   arrowDist: 9,
+  // #55: the forward/back walk arrows are snapped to the capture/travel axis
+  // (the picture's `heading` = view:azimuth), which is far steadier than noisy
+  // point-to-point GPS bearings (Panoramax positions are often only ~4 m
+  // accurate — in a narrow street that throws the arrow right off the path).
+  axisCone: 55, // a neighbour within this of the axis can anchor an axis arrow
+  axisDistWeight: 4, // metres→degrees weight when choosing the axis target
 };
+
+function makeArrow(current, s, drawBearing, o) {
+  // At least minArrowDist (never near the camera), at most arrowDist, and not
+  // overshooting a far neighbour beyond arrowDist.
+  const placeDist = Math.min(o.arrowDist, Math.max(o.minArrowDist, s.dist));
+  const [lon, lat] = destinationPoint(current.lon, current.lat, drawBearing, placeDist);
+  return {
+    targetId: s.pic.id,
+    bearing: drawBearing,
+    dist: s.dist,
+    lon,
+    lat,
+    sameSequence: s.pic.sequenceId === current.sequenceId,
+  };
+}
 
 export function pickArrows(current, candidates, options = {}) {
   const o = { ...ARROW_DEFAULTS, ...options };
@@ -30,21 +51,38 @@ export function pickArrows(current, candidates, options = {}) {
     .sort((a, b) => a.dist - b.dist);
 
   const chosen = [];
+  const used = new Set();
+  const heading = typeof current.heading === 'number' ? current.heading : null;
+
+  // #55: primary forward/back arrows along the travel axis, drawn AT the heading
+  // (not the neighbour's jittered GPS bearing) so they point straight down the
+  // street. The target is the best neighbour near that axis (aligned, then near).
+  if (heading != null) {
+    for (const axis of [heading, (heading + 180) % 360]) {
+      let best = null;
+      let bestCost = Infinity;
+      for (const s of scored) {
+        if (used.has(s.pic.id)) continue;
+        const off = Math.abs(angularDiff(s.bearing, axis));
+        if (off > o.axisCone) continue;
+        const cost = off + s.dist * o.axisDistWeight;
+        if (cost < bestCost) { bestCost = cost; best = s; }
+      }
+      if (best) {
+        used.add(best.pic.id);
+        chosen.push(makeArrow(current, best, axis, o));
+      }
+    }
+  }
+
+  // Remaining neighbours → side arrows at their true bearing (turns/crossings),
+  // one per direction sector, not clashing with an axis arrow already placed.
   for (const s of scored) {
     if (chosen.length >= o.limit) break;
+    if (used.has(s.pic.id)) continue;
     if (chosen.some((c) => Math.abs(angularDiff(c.bearing, s.bearing)) < o.sector)) continue;
-    // At least minArrowDist (never near the camera), at most arrowDist, and not
-    // overshooting a far neighbour beyond arrowDist.
-    const placeDist = Math.min(o.arrowDist, Math.max(o.minArrowDist, s.dist));
-    const [lon, lat] = destinationPoint(current.lon, current.lat, s.bearing, placeDist);
-    chosen.push({
-      targetId: s.pic.id,
-      bearing: s.bearing,
-      dist: s.dist,
-      lon,
-      lat,
-      sameSequence: s.pic.sequenceId === current.sequenceId,
-    });
+    used.add(s.pic.id);
+    chosen.push(makeArrow(current, s, s.bearing, o));
   }
   return chosen;
 }
