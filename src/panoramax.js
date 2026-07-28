@@ -32,9 +32,12 @@ export function addPanoramaxLayers(map) {
     type: 'circle',
     source: SOURCE_ID,
     'source-layer': 'pictures',
-    minzoom: 14,
+    // Individual picture dots only at street scale — at z16 the whole city of
+    // points renders at once (tens of MB). Sequence lines cover the overview;
+    // dots appear when you're zoomed in enough to click one (#56, see LOD.md).
+    minzoom: 17,
     paint: {
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 3, 19, 7],
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 17, 4, 22, 8],
       'circle-color': ['case', ['==', ['get', 'type'], 'equirectangular'], '#2962ff', '#ff6f00'],
       'circle-stroke-color': '#fff',
       'circle-stroke-width': 1.2,
