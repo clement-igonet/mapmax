@@ -19,6 +19,14 @@ export const START_VIEW = {
 export const MAP_MAX_PITCH = 85;
 export const STREET_MAX_PITCH = 179;
 
+// Map-mode clutter cap (#41): in the tilted map, don't render 3D buildings and
+// Panoramax dots out to the horizon. MapLibre v6 has no fog / distance
+// expression, so we cap the tilt so the top of the viewport never sees ground
+// beyond this radius from the centre — tilt unlocks as you zoom in. Never cap
+// below MAP_MIN_PITCH_CAP (keep a little 3D even when zoomed out).
+export const MAP_VISIBLE_RADIUS_M = 160;
+export const MAP_MIN_PITCH_CAP = 20;
+
 // In street mode, only show/load Panoramax pictures within this radius (meters)
 // around the current photosphere — keeps the scene light and POIs nearby (#27).
 export const STREET_POI_RADIUS_M = 50;

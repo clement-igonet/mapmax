@@ -65,6 +65,37 @@ assert.ok(wiring.hasPanoramax, 'panoramax source missing');
 assert.ok(wiring.hasExtrusion, '3D buildings layer missing');
 console.log(`[e2e] map version: ${wiring.version || 'n/a'}`);
 
+// Map-mode clutter cap (#41): the tilt is limited so the map never renders 3D
+// buildings + Panoramax dots out to the horizon, and the limit rises as you zoom
+// in. Verify the cap is below the hard max, grows on zoom-in, and that at the cap
+// the top of the viewport looks no further than ~the configured radius.
+const clutter = await page.evaluate(async () => {
+  const { map } = await import('./src/main.js');
+  const { MAP_VISIBLE_RADIUS_M, MAP_MAX_PITCH } = await import('./src/config.js');
+  const { distanceM } = await import('./src/geo.js');
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+  const farAtCap = () => {
+    map.setPitch(map.getMaxPitch());
+    const c = map.getCenter();
+    const w = map.getCanvas().clientWidth;
+    const top = map.unproject([w / 2, 0]);
+    return distanceM(c.lng, c.lat, top.lng, top.lat);
+  };
+  const startZoom = map.getZoom();
+  const capAtStart = map.getMaxPitch();
+  map.setZoom(startZoom + 2.5);
+  await settle();
+  const capZoomedIn = map.getMaxPitch();
+  const farZoomedIn = farAtCap();
+  map.setZoom(startZoom); // restore for later steps
+  await settle();
+  return { capAtStart, capZoomedIn, farZoomedIn, R: MAP_VISIBLE_RADIUS_M, hardMax: MAP_MAX_PITCH };
+});
+assert.ok(clutter.capAtStart < clutter.hardMax - 1, `map tilt not capped (${clutter.capAtStart}° = hard max) — would render to the horizon (#41)`);
+assert.ok(clutter.capZoomedIn > clutter.capAtStart + 1, 'tilt cap did not unlock when zooming in (#41)');
+assert.ok(clutter.farZoomedIn <= clutter.R * 1.25, `at the tilt cap the map sees ${clutter.farZoomedIn | 0} m > radius ${clutter.R} m (#41)`);
+console.log(`[e2e] clutter cap OK (cap ${clutter.capAtStart | 0}°→${clutter.capZoomedIn | 0}° on zoom-in; far@cap ${clutter.farZoomedIn | 0} m ≤ ~${clutter.R} m) (#41)`);
+
 // Drive the photosphere plugin with a real Panoramax picture (plugin adoption).
 const nav = await page.evaluate(async () => {
   const { getSequence } = await import('./src/panoramax.js');
