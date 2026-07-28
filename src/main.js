@@ -9,6 +9,7 @@ import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
+import { setupNearBuildings } from './nearbuildings.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 
@@ -130,11 +131,26 @@ map.on('load', async () => {
   }
 });
 
+// #60: while inside a photosphere, render only the buildings near the viewer (the
+// far tiled skyline never lines up with the photo). Reference point = the sphere
+// anchor in street mode, else the map centre.
+const refPoint = () => {
+  const ps = _photosphere();
+  if (ps && ps.mode !== 'outside' && ps.lngLat) return ps.lngLat;
+  const c = map.getCenter();
+  return [c.lng, c.lat];
+};
+let updateNearBuildings = null;
+
 map.on('style.load', () => {
   ensureBuildings3D();
   addPanoramaxLayers(map);
+  if (!updateNearBuildings) updateNearBuildings = setupNearBuildings(map, isStreetMode, refPoint);
   status('Zoom in and click a Panoramax picture dot.');
 });
+// Re-assert the near-building bubble when blend re-reveals tiled layers / on
+// entering/leaving a photosphere.
+onPictureChanged(() => updateNearBuildings?.());
 
 // Sprite icons referenced by the style but absent from its sprite sheet would
 // log a warning per POI type; register a transparent placeholder. MapLibre main
@@ -199,7 +215,10 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const blendSlider = document.getElementById('blend');
-blendSlider.addEventListener('input', () => setBlend(sliderToBlend(blendSlider.value)));
+blendSlider.addEventListener('input', () => {
+  setBlend(sliderToBlend(blendSlider.value));
+  updateNearBuildings?.(); // blend re-reveals tiled layers — re-hide the far skyline (#60)
+});
 
 const exitBtn = document.getElementById('exit-street');
 const leaveStreetUI = () => {
