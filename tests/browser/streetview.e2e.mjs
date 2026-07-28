@@ -113,6 +113,10 @@ const nav = await page.evaluate(async () => {
   await waitFor(() => sv._photosphere()?.mode === 'inside', 10000);
   const enteredMode = sv._photosphere()?.mode;
   const inStreet = sv.isStreetMode();
+  // #54 deep-link: entering writes ?pic=<id> to the URL (checked before the walk
+  // moves us to another picture). deepLinkId feeds the reload test below.
+  const urlPicOnEnter = new URLSearchParams(location.search).get('pic');
+  const deepLinkId = pano.id;
   // #52: the shader rotates the texture by the picture heading (view:azimuth) so
   // the photo aligns with the vector world instead of assuming centre = north.
   const panoYawApplied = sv._photosphere()._panoYawDeg === (pano.heading || 0);
@@ -150,25 +154,29 @@ const nav = await page.evaluate(async () => {
       im.onerror = res;
       im.src = walkTarget.assets.sd || walkTarget.assets.hd || walkTarget.assets.thumb;
     });
-    sv.enterStreetView(map, walkTarget); // inside → goTo (walk)
     const atTarget = () => {
       const l = sv._photosphere().lngLat;
       return l && Math.abs(l[0] - walkTarget.lon) < 1e-9 && Math.abs(l[1] - walkTarget.lat) < 1e-9;
     };
     // Prove it's a smooth dolly, not a teleport (#5b): sample the crossfade
     // weight + transition flag across the walk. A teleport would flip lngLat with
-    // uMix never leaving 0 and _transitioning never true.
+    // uMix never leaving 0 and _transitioning never true. Retried once because
+    // the first shared-GL texture upload can silently hang under swiftshader
+    // (real browsers and direct goTo are fine) — a re-issued goTo re-uploads.
     let sawMix = 0;
     let sawTransitioning = false;
-    const t0 = performance.now();
-    const sampler = () => {
-      const ps = sv._photosphere();
-      sawMix = Math.max(sawMix, ps._mix || 0);
-      if (ps._transitioning) sawTransitioning = true;
-      if (!atTarget() && performance.now() - t0 < 20000) requestAnimationFrame(sampler);
-    };
-    requestAnimationFrame(sampler);
-    await waitFor(atTarget, 20000);
+    for (let attempt = 0; attempt < 2 && !atTarget(); attempt++) {
+      sv.enterStreetView(map, walkTarget); // inside → goTo (walk)
+      const t0 = performance.now();
+      const sampler = () => {
+        const ps = sv._photosphere();
+        sawMix = Math.max(sawMix, ps._mix || 0);
+        if (ps._transitioning) sawTransitioning = true;
+        if (!atTarget() && performance.now() - t0 < 20000) requestAnimationFrame(sampler);
+      };
+      requestAnimationFrame(sampler);
+      await waitFor(atTarget, 20000);
+    }
     walkedToNext = sv.currentPicture()?.id === walkTarget.id && atTarget() && walkTarget.id !== pic0;
     walkStillInside = sv.isStreetMode() && sv._photosphere().mode === 'inside';
     smoothWalk = sawTransitioning && sawMix > 0.05 && sawMix <= 1.0001;
@@ -259,6 +267,7 @@ const nav = await page.evaluate(async () => {
   sv.setBlend(sliderToBlend(50)); // leave mixed to check restore path on exit
   sv.exitStreetView();
   await waitFor(() => !sv.isStreetMode(), 8000);
+  const urlPicAfterExit = new URLSearchParams(location.search).get('pic'); // #54: cleared on exit
   const visibleAfter = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
   const navAfterExit = navMod._navCounts().arrows + navMod._navCounts().poi;
@@ -268,7 +277,7 @@ const nav = await page.evaluate(async () => {
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside, smoothWalk, walkMixSeen,
-           panoYawApplied, walkPanoYawApplied,
+           panoYawApplied, walkPanoYawApplied, urlPicOnEnter, deepLinkId, urlPicAfterExit,
            navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
@@ -304,6 +313,8 @@ if (nav.skipped) {
   assert.ok(nav.arrowsNotClipped, 'shader ground arrow was not hittable across grazing pitches — would be cropped (#26)');
   assert.ok(nav.clickEmptyStable, 'clicking empty space navigated — must only navigate on a feature (#32)');
   assert.equal(nav.navAfterExit, 0, 'navigation targets not cleared on exit');
+  assert.equal(nav.urlPicOnEnter, nav.deepLinkId, 'entering a photosphere did not write ?pic= to the URL (#54)');
+  assert.equal(nav.urlPicAfterExit, null, 'exiting did not clear ?pic= from the URL (#54)');
   assert.ok(nav.picInfoShowsId, 'page does not show the current picture id (#34)');
   assert.ok(nav.enteredIs360, 'entered a non-360 picture into the sphere (#40)');
   assert.ok(nav.picInfoHasBadge, '360/flat badge missing (#40)');
@@ -313,6 +324,27 @@ if (nav.skipped) {
   console.log('[e2e] street backdrop applied + restored on exit (#37) OK');
   console.log(`[e2e] incrusted nav OK (${nav.navTargets} targets, GL layers, click-safe)`);
   console.log(`[e2e] enter/exit OK; walk OK (#5); tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK (OSM ${nav.osmVisibleAtMixed}/${nav.osmTiledCount}, panoramax kept ${nav.panoramaxHiddenAtMixed}/${nav.panoramaxTiledCount} suspended #27); controls OK; FOV sync OK`);
+
+  // #54 deep-link: a fresh page load carrying ?pic=<id> must restore street view
+  // on that picture (as if you had reloaded while inside it).
+  if (nav.deepLinkId) {
+    await page.goto(`${base}?pic=${nav.deepLinkId}`, { waitUntil: 'load', timeout: 60000 });
+    await page.waitForSelector('#map canvas', { timeout: 30000 });
+    const deep = await page.evaluate(async () => {
+      const sv = await import('./src/streetview.js');
+      const waitFor = (pred, ms) => new Promise((res) => {
+        const t0 = performance.now();
+        const tick = () => (pred() || performance.now() - t0 > ms ? res() : requestAnimationFrame(tick));
+        tick();
+      });
+      await waitFor(() => sv.isStreetMode() && sv.currentPicture(), 20000);
+      return { inStreet: sv.isStreetMode(), id: sv.currentPicture()?.id, picStillInUrl: new URLSearchParams(location.search).get('pic') };
+    });
+    assert.ok(deep.inStreet, 'deep-link ?pic= did not restore street view on reload (#54)');
+    assert.equal(deep.id, nav.deepLinkId, 'deep-link restored the wrong picture (#54)');
+    assert.equal(deep.picStillInUrl, nav.deepLinkId, 'deep-link ?pic= lost from the URL after restore (#54)');
+    console.log('[e2e] deep-link ?pic= restores street view on reload (#54) OK');
+  }
 }
 
 
