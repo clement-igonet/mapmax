@@ -8,6 +8,7 @@ import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
+import { setupClutterCap } from './mapclutter.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 
 const status = (msg) => {
@@ -42,6 +43,11 @@ map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
 setupNavigation(map);
 setupControls(map);
 setupMinimap(map);
+// Cap the tilt so the map never renders 3D buildings + Panoramax dots out to the
+// horizon; tilt unlocks as you zoom in (#41). Street mode manages its own pitch.
+const applyClutterCap = setupClutterCap(map, isStreetMode);
+// Re-apply on return to the map (street mode restored maxPitch to the hard max).
+onPictureChanged((pic) => { if (!pic) applyClutterCap(); });
 
 // Show the current picture's info in the page: a 360°/flat badge, the full id,
 // the author and a link to the original image (#34, #40).
