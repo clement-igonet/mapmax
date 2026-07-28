@@ -1,9 +1,16 @@
 // Unit tests for the map-mode clutter pitch cap (#41).
 import { assert, assertAlmostEquals, assertEquals } from 'jsr:@std/assert@1';
-import { farRadiusM, pitchForRadius } from '../../src/mapclutter.js';
+import { farRadiusM, metersPerPixel, pitchForRadius } from '../../src/mapclutter.js';
 
 const D = 1000; // camera-to-centre distance (px), representative
 const FOV = 36.87;
+
+Deno.test('metersPerPixel matches web-mercator 512-tile resolution (validated vs unproject)', () => {
+  // Paris, z16.5 — measured ~0.5550 m/px against map.unproject in the browser.
+  assertAlmostEquals(metersPerPixel(48.855, 16.5), 0.5557, 0.01);
+  // Equator z0: full 512-px world spans the 40 075 km circumference.
+  assertAlmostEquals(metersPerPixel(0, 0), 78271.517, 1);
+});
 
 Deno.test('farRadiusM grows with pitch and blows up at the horizon', () => {
   const r10 = farRadiusM(10, D, 5, FOV);

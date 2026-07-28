@@ -9,6 +9,11 @@
 // (a smaller ground footprint per screen ⇒ more tilt fits inside the radius).
 import { MAP_MAX_PITCH, MAP_MIN_PITCH_CAP, MAP_VISIBLE_RADIUS_M } from './config.js';
 
+// Ground metres per screen pixel at the map centre (MapLibre 512-px tiles).
+const METERS_PER_PIXEL_Z0 = 78271.517; // 40075016.686 m circumference / 512
+export const metersPerPixel = (lat, zoom) =>
+  (METERS_PER_PIXEL_Z0 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom);
+
 // Ground distance (m) from the centre to where the top-of-viewport ray meets the
 // ground, for a given pitch. MapLibre pitch is measured from straight-down; the
 // camera sits `D` screen-px from the centre along the view axis (independent of
@@ -45,10 +50,17 @@ export function pitchForRadius(camToCenterPx, pixelsPerMeter, fovDeg, radiusM, h
 export function setupClutterCap(map, isStreetMode, radiusM = MAP_VISIBLE_RADIUS_M) {
   const apply = () => {
     if (isStreetMode && isStreetMode()) return;
-    const t = map.transform;
-    if (!t) return;
+    const canvas = map.getCanvas();
+    const heightPx = canvas.clientHeight || canvas.height;
+    if (!heightPx) return; // not laid out yet
+    // MapLibre's transform internals (cameraToCenterDistance / pixelsPerMeter)
+    // aren't public in v6, so derive both from public API (validated against
+    // unproject to ~1%): the camera sits 0.5/tan(fov/2)·height px from the centre,
+    // and pixelsPerMeter is 1 / ground-metres-per-pixel at the centre.
     const fovDeg = typeof map.getVerticalFieldOfView === 'function' ? map.getVerticalFieldOfView() : 36.87;
-    const cap = pitchForRadius(t.cameraToCenterDistance, t.pixelsPerMeter, fovDeg, radiusM);
+    const camToCenterPx = (0.5 / Math.tan((fovDeg * Math.PI) / 360)) * heightPx;
+    const pixelsPerMeter = 1 / metersPerPixel(map.getCenter().lat, map.getZoom());
+    const cap = pitchForRadius(camToCenterPx, pixelsPerMeter, fovDeg, radiusM);
     // Only touch setMaxPitch on a real change — it fires move events itself.
     if (Math.abs(map.getMaxPitch() - cap) > 0.4) map.setMaxPitch(cap);
   };
