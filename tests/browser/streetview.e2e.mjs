@@ -134,18 +134,19 @@ const nav = await page.evaluate(async () => {
   const backdropApplied = map.getPaintProperty('background', 'background-color') === '#d7d9dc' &&
     getComputedStyle(document.getElementById('map')).backgroundColor === 'rgb(215, 217, 220)' &&
     !!map.getSky();
-  // Ground arrows are now drawn INSIDE the photosphere layer (shader, #26); only
-  // the neighbour POI dots are a MapLibre GL layer. Assert the POI layer exists,
-  // the plugin received the arrows, there are nav targets, and that clicking
-  // empty space does NOT navigate (screen-space hit-test, drag-safe #32).
+  // Both the ground arrows AND the neighbour dots are drawn INSIDE the
+  // photosphere shader (#26, #39) — there is NO MapLibre nav layer to clip.
+  // Assert the plugin received both, there are nav targets, and that clicking
+  // empty space does NOT navigate (floor-raycast hit-test, drag-safe #32).
   const navMod = await import('./src/navigation.js');
-  await waitFor(() => map.getLayer('mapmax-nav-poi') &&
-    (navMod._navCounts().arrows + navMod._navCounts().poi) > 0, 10000);
+  await waitFor(() => (navMod._navCounts().arrows + navMod._navCounts().poi) > 0, 10000);
   const nc = navMod._navCounts();
   const navTargets = nc.arrows + nc.poi;
   const ps0 = sv._photosphere();
   const shaderArrowCount = ps0?._navArrows?.length ?? 0;
-  const hasGlNavLayers = !!map.getLayer('mapmax-nav-poi') && (nc.arrows === 0 || shaderArrowCount === nc.arrows);
+  const shaderPoiCount = ps0?._navPois?.length ?? 0;
+  const noMapNavLayer = !map.getLayer('mapmax-nav-poi') && !map.getLayer('mapmax-nav-arrows');
+  const hasGlNavLayers = noMapNavLayer && shaderArrowCount === nc.arrows && shaderPoiCount === nc.poi;
   // #26 crop guard: floor arrows live on the ground plane in the shader — they
   // span the full viewport and CANNOT be cropped by the map near plane. Prove an
   // arrow is hittable across a range of grazing pitches (a near-plane-clipped
@@ -214,7 +215,7 @@ const nav = await page.evaluate(async () => {
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside,
-           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount,
+           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
 });
@@ -241,7 +242,7 @@ if (nav.skipped) {
   assert.ok(nav.pictureStableAfterDrag, 'dragging to look translated to another photosphere (#30)');
   assert.ok(nav.walkedToNext, 'walk to an adjacent panorama did not move position (#5)');
   assert.ok(nav.walkStillInside, 'walk exited street view instead of staying inside (#5)');
-  assert.ok(nav.hasGlNavLayers, 'incrusted nav layers missing (POI GL layer / shader arrows out of sync)');
+  assert.ok(nav.hasGlNavLayers, 'incrusted nav out of sync — a map-plane nav layer exists, or shader arrow/POI counts mismatch (#39)');
   assert.ok(nav.navTargets > 0, 'no navigation targets (arrows/POI) to neighbour 360s');
   assert.ok(nav.arrowsNotClipped, 'shader ground arrow was not hittable across grazing pitches — would be cropped (#26)');
   assert.ok(nav.clickEmptyStable, 'clicking empty space navigated — must only navigate on a feature (#32)');

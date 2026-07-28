@@ -22,6 +22,9 @@ const VERTEX_SHADER_SOURCE = `
 
 const MAX_ARROWS = 6;
 const ARROW_GROUND_DIST = 5; // where a ground arrow sits, from the eye (m)
+const MAX_POIS = 12;
+const POI_RADIUS_M = 0.85; // ground radius of a neighbour-panorama dot (m)
+const POI_PICK_RADIUS_M = 1.1;
 const FRAGMENT_SHADER_SOURCE = `
     precision highp float;
     varying vec2 vNdc;
@@ -36,6 +39,8 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform float uEyeHeight;      // eye height above the ground (m)
     uniform int uArrowCount;
     uniform vec2 uArrows[${MAX_ARROWS}]; // ground positions (east, north) m from the eye
+    uniform int uPoiCount;
+    uniform vec2 uPois[${MAX_POIS}];     // neighbour-pano ground positions (east, north) m
 
     // A filled arrowhead in the arrow's local frame (x = right, y = forward),
     // tapering from a base to a tip that points toward the target.
@@ -80,12 +85,29 @@ const FRAGMENT_SHADER_SOURCE = `
             }
         }
 
-        // Ground navigation arrows, drawn on the floor plane at z = -uEyeHeight.
+        // Ground navigation overlays, drawn on the floor plane at z = -uEyeHeight.
         // Rendered here (in the panorama layer) they cover the whole viewport and
-        // are never clipped by MapLibre's map-plane near clip (mapmax #26).
-        if (viewDir.z < -0.0001 && uArrowCount > 0) {
+        // are never clipped by MapLibre's map-plane near clip (mapmax #26, #39).
+        if (viewDir.z < -0.0001 && (uArrowCount > 0 || uPoiCount > 0)) {
             float tg = -uEyeHeight / viewDir.z;
             vec2 g = viewDir.xy * tg;                    // ground point (east, north) m
+
+            // Neighbour-panorama dots at their real ground position: a blue disc
+            // with a white rim. Round and flat on the street — never the cropped,
+            // blown-up blobs a map-plane circle layer gives at grazing pitch.
+            for (int i = 0; i < ${MAX_POIS}; i++) {
+                if (i >= uPoiCount) break;
+                float d = length(g - uPois[i]);
+                if (d < ${POI_RADIUS_M.toFixed(2)}) {
+                    rgb = mix(rgb, vec3(0.16, 0.4, 1.0), 0.9);
+                    a = max(a, 0.9);
+                } else if (d < ${(POI_RADIUS_M + 0.16).toFixed(2)}) {
+                    rgb = mix(rgb, vec3(1.0), 0.9);      // white rim
+                    a = max(a, 0.9);
+                }
+            }
+
+            // Walk arrows, on top of the dots.
             float mask = 0.0;
             for (int i = 0; i < ${MAX_ARROWS}; i++) {
                 if (i >= uArrowCount) break;
@@ -155,6 +177,7 @@ export class Photosphere {
         this._blend = 1; // steady-state opacity while inside (1 = photo only)
         this._savedFov = null; // map's vertical FOV before entering
         this._navArrows = []; // [{ bearing (deg), id }] rendered on the floor
+        this._navPois = []; //   [{ east, north (m from eye), id }] floor dots
         this._sphereCenterOffset = [0, 0, 0];
         this._gl = null;
         this._layerCtx = null;
@@ -216,8 +239,15 @@ export class Photosphere {
         this._map.triggerRepaint();
     }
 
-    // The id of the arrow under screen pixel (px, py), or null. Ray-casts the
-    // floor with the same view maths as the shader (works at any pitch).
+    // Neighbour-panorama dots rendered on the floor (mapmax #39).
+    // `list` = [{ east, north (m from the eye), id }].
+    setNavPois(list) {
+        this._navPois = Array.isArray(list) ? list.slice(0, MAX_POIS) : [];
+        this._map.triggerRepaint();
+    }
+
+    // The id of the arrow or POI dot under screen pixel (px, py), or null. Ray-
+    // casts the floor with the same view maths as the shader (works at any pitch).
     groundPick(px, py) {
         const canvas = this._map.getCanvas();
         const w = canvas.clientWidth;
@@ -252,6 +282,9 @@ export class Photosphere {
             if (ly > base && ly < tip && Math.abs(lx) < halfW * (1 - (ly - base) / (tip - base))) {
                 return a.id;
             }
+        }
+        for (const p of this._navPois) {
+            if (Math.hypot(g[0] - p.east, g[1] - p.north) < POI_PICK_RADIUS_M) return p.id;
         }
         return null;
     }
@@ -423,7 +456,7 @@ export class Photosphere {
 
                 this.aPosition = gl.getAttribLocation(this.program, 'aPosition');
                 this.uniforms = {};
-                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uEyeHeight', 'uArrowCount', 'uArrows']) {
+                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uEyeHeight', 'uArrowCount', 'uArrows', 'uPoiCount', 'uPois']) {
                     this.uniforms[name] = gl.getUniformLocation(this.program, name);
                 }
 
@@ -484,6 +517,16 @@ export class Photosphere {
                     buf[i * 2 + 1] = ARROW_GROUND_DIST * Math.cos(br);
                 }
                 gl.uniform2fv(this.uniforms.uArrows, buf);
+
+                // Neighbour-panorama dots at their real ground offsets (#39).
+                const np = Math.min(MAX_POIS, self._navPois.length);
+                gl.uniform1i(this.uniforms.uPoiCount, np);
+                const pbuf = new Float32Array(MAX_POIS * 2);
+                for (let i = 0; i < np; i++) {
+                    pbuf[i * 2] = self._navPois[i].east;
+                    pbuf[i * 2 + 1] = self._navPois[i].north;
+                }
+                gl.uniform2fv(this.uniforms.uPois, pbuf);
 
                 gl.drawArrays(gl.TRIANGLES, 0, 3);
                 gl.disable(gl.BLEND);
