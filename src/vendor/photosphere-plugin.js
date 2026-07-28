@@ -36,11 +36,35 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform vec3 uSphereCenterOffset;
     uniform float uSphereRadius;
     uniform sampler2D uPanorama;
+    // Second sphere + crossfade weight, used only while walking between two
+    // panoramas so the camera dollies across instead of teleporting (#5b).
+    uniform vec3 uSphereCenterOffset2;
+    uniform sampler2D uPanorama2;
+    uniform float uMix;            // 0 = current pano only, 1 = next pano only
     uniform float uEyeHeight;      // eye height above the ground (m)
     uniform int uArrowCount;
     uniform vec2 uArrows[${MAX_ARROWS}]; // ground positions (east, north) m from the eye
     uniform int uPoiCount;
     uniform vec2 uPois[${MAX_POIS}];     // neighbour-pano ground positions (east, north) m
+
+    // Ray-cast one panorama sphere; returns rgb + hit-alpha (a = 0 on a miss).
+    vec4 sampleSphere(vec3 viewDir, vec3 centerOffset, sampler2D tex) {
+        vec3 originToCenter = -centerOffset;
+        float b = dot(originToCenter, viewDir);
+        float c = dot(originToCenter, originToCenter) - uSphereRadius * uSphereRadius;
+        float discriminant = b * b - c;
+        if (discriminant < 0.0) return vec4(0.0);
+        float sq = sqrt(discriminant);
+        float tNear = -b - sq;
+        float tFar = -b + sq;
+        float t = tNear > 0.0 ? tNear : tFar;
+        if (t < 0.0) return vec4(0.0);
+        vec3 normal = normalize(viewDir * t - centerOffset);
+        float theta = atan(normal.x, normal.y);
+        float phi = asin(clamp(normal.z, -1.0, 1.0));
+        vec4 color = texture2D(tex, vec2(0.5 + theta / (2.0 * 3.14159265359), 0.5 - phi / 3.14159265359));
+        return vec4(color.rgb, color.a);
+    }
 
     // A filled arrowhead in the arrow's local frame (x = right, y = forward),
     // tapering from a base to a tip that points toward the target.
@@ -63,26 +87,19 @@ const FRAGMENT_SHADER_SOURCE = `
 
         vec3 viewDir = normalize(forward + right * (vNdc.x * tanHalfFovX) + up * (vNdc.y * tanHalfFovY));
 
-        // Base colour: the panorama sphere.
-        vec3 rgb = vec3(0.0);
-        float a = 0.0;
-        vec3 originToCenter = -uSphereCenterOffset;
-        float b = dot(originToCenter, viewDir);
-        float c = dot(originToCenter, originToCenter) - uSphereRadius * uSphereRadius;
-        float discriminant = b * b - c;
-        if (discriminant >= 0.0) {
-            float sq = sqrt(discriminant);
-            float tNear = -b - sq;
-            float tFar = -b + sq;
-            float t = tNear > 0.0 ? tNear : tFar;
-            if (t >= 0.0) {
-                vec3 normal = normalize(viewDir * t - uSphereCenterOffset);
-                float theta = atan(normal.x, normal.y);
-                float phi = asin(clamp(normal.z, -1.0, 1.0));
-                vec4 color = texture2D(uPanorama, vec2(0.5 + theta / (2.0 * 3.14159265359), 0.5 - phi / 3.14159265359));
-                rgb = color.rgb;
-                a = color.a * uAlpha;
-            }
+        // Base colour: the panorama sphere. While walking (uMix > 0) a second
+        // sphere for the next panorama is cross-faded in as the eye dollies from
+        // one anchor to the other — a smooth translation, not a teleport (#5b).
+        vec4 s1 = sampleSphere(viewDir, uSphereCenterOffset, uPanorama);
+        vec3 rgb;
+        float a;
+        if (uMix > 0.0) {
+            vec4 s2 = sampleSphere(viewDir, uSphereCenterOffset2, uPanorama2);
+            rgb = mix(s1.rgb, s2.rgb, uMix);
+            a = mix(s1.a, s2.a, uMix) * uAlpha;
+        } else {
+            rgb = s1.rgb;
+            a = s1.a * uAlpha;
         }
 
         // Ground navigation overlays, drawn on the floor plane at z = -uEyeHeight.
@@ -150,6 +167,7 @@ const DEFAULT_OPTIONS = {
     zoom: 18,
     radius: 6,
     durationMs: 1500,
+    walkMs: 650, // dolly time when walking to an adjacent panorama (#5b)
     dragSensitivity: 0.15,
     minPitch: -85,
     maxPitch: 85,
@@ -179,6 +197,9 @@ export class Photosphere {
         this._navArrows = []; // [{ bearing (deg), id }] rendered on the floor
         this._navPois = []; //   [{ east, north (m from eye), id }] floor dots
         this._sphereCenterOffset = [0, 0, 0];
+        this._sphereCenterOffset2 = [0, 0, 0]; // next pano while walking (#5b)
+        this._mix = 0; // crossfade weight during a walk transition
+        this._transitioning = false;
         this._gl = null;
         this._layerCtx = null;
 
@@ -357,23 +378,80 @@ export class Photosphere {
         });
     }
 
-    // Walk to an adjacent panorama while inside. Loads the next equirectangular
-    // image, then swaps the anchor + eye to its location once decoded (no
-    // flash), preserving the current look direction. Fires onMove.
+    // Walk to an adjacent panorama while inside. Preloads the next equirectangular
+    // image into the second texture, then dollies the eye from the current anchor
+    // to the target while cross-fading the two spheres — a smooth translation,
+    // not a teleport (#5b). Preserves the current look direction. Fires onMove.
     goTo(target) {
-        if (this._mode !== 'inside' || !target || !target.imageUrl) {
+        if (this._mode !== 'inside' || this._transitioning || !target || !target.imageUrl) {
             return;
         }
-        this._loadTexture(target.imageUrl, (err) => {
-            if (err) return;
-            if (target.lngLat) this._options.lngLat = target.lngLat;
-            this._options.imageUrl = target.imageUrl;
-            this._sphereCenterOffset = [0, 0, 0];
-            this._recalibrateLookTargetDistance();
-            this._updateCameraWhileInside();
-            this._map.triggerRepaint();
-            if (this._options.onMove) this._options.onMove(target);
+        const fromAnchor = this._options.lngLat;
+        const toAnchor = target.lngLat || fromAnchor;
+        this._loadInto('texture2', target.imageUrl, (err) => {
+            if (this._mode !== 'inside') return;
+            if (err) { // fall back to an instant swap rather than getting stuck
+                this._finishTransition(toAnchor, target.imageUrl, target);
+                return;
+            }
+            this._runTransition(fromAnchor, toAnchor, target);
         });
+    }
+
+    // Animate the eye from `fromAnchor` to `toAnchor`: sphere 1 (current) stays
+    // at fromAnchor, sphere 2 (next) at toAnchor, both rendered from the moving
+    // eye so you see real approach parallax, cross-faded 0→1 over the walk.
+    _runTransition(fromAnchor, toAnchor, target) {
+        this._transitioning = true;
+        const fromM = MercatorCoordinate.fromLngLat(fromAnchor);
+        const toM = MercatorCoordinate.fromLngLat(toAnchor);
+        const durationMs = this._options.walkMs;
+        const startTime = performance.now();
+        const step = (now) => {
+            if (this._mode !== 'inside') { this._endTransitionState(); return; }
+            const t = Math.min(1, (now - startTime) / durationMs);
+            const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            const eye = [
+                fromAnchor[0] + (toAnchor[0] - fromAnchor[0]) * eased,
+                fromAnchor[1] + (toAnchor[1] - fromAnchor[1]) * eased,
+            ];
+            const eyeM = MercatorCoordinate.fromLngLat(eye);
+            const m = eyeM.meterInMercatorCoordinateUnits();
+            this._sphereCenterOffset = [(fromM.x - eyeM.x) / m, -(fromM.y - eyeM.y) / m, 0];
+            this._sphereCenterOffset2 = [(toM.x - eyeM.x) / m, -(toM.y - eyeM.y) / m, 0];
+            this._mix = eased;
+            this._positionEyeAt(eye);
+            this._map.triggerRepaint();
+            if (t < 1) requestAnimationFrame(step);
+            else this._finishTransition(toAnchor, target.imageUrl, target);
+        };
+        requestAnimationFrame(step);
+    }
+
+    // Promote the next panorama to current: swap textures (texture2 already holds
+    // it), reset the offsets/crossfade, and settle the eye at the new anchor.
+    _finishTransition(toAnchor, imageUrl, target) {
+        const layer = this._layerCtx;
+        if (layer) {
+            const tmp = layer.texture;
+            layer.texture = layer.texture2;
+            layer.texture2 = tmp;
+            layer.textureReady = true;
+        }
+        this._options.lngLat = toAnchor;
+        this._options.imageUrl = imageUrl;
+        this._endTransitionState();
+        this._recalibrateLookTargetDistance();
+        this._updateCameraWhileInside();
+        this._map.triggerRepaint();
+        if (this._options.onMove) this._options.onMove(target);
+    }
+
+    _endTransitionState() {
+        this._sphereCenterOffset = [0, 0, 0];
+        this._sphereCenterOffset2 = [0, 0, 0];
+        this._mix = 0;
+        this._transitioning = false;
     }
 
     exit() {
@@ -419,21 +497,27 @@ export class Photosphere {
 
     // Refactored image → texture load, reusable after the layer exists (not
     // only at creation). No-op until onAdd has stored the gl + layer context.
-    _loadTexture(url, onReady) {
+    // `slot` picks which texture to fill: 'texture' (current) or 'texture2'
+    // (the next panorama, preloaded for a walk transition #5b).
+    _loadInto(slot, url, onReady) {
         const gl = this._gl;
         const layer = this._layerCtx;
         if (!gl || !layer) return;
         const image = new Image();
         image.crossOrigin = 'anonymous';
         image.onload = () => {
-            gl.bindTexture(gl.TEXTURE_2D, layer.texture);
+            gl.bindTexture(gl.TEXTURE_2D, layer[slot]);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-            layer.textureReady = true;
+            if (slot === 'texture') layer.textureReady = true;
             this._map.triggerRepaint();
             if (onReady) onReady();
         };
         image.onerror = () => onReady && onReady(new Error(`photosphere image failed: ${url}`));
         image.src = url;
+    }
+
+    _loadTexture(url, onReady) {
+        this._loadInto('texture', url, onReady);
     }
 
     _createLayer() {
@@ -456,7 +540,7 @@ export class Photosphere {
 
                 this.aPosition = gl.getAttribLocation(this.program, 'aPosition');
                 this.uniforms = {};
-                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uEyeHeight', 'uArrowCount', 'uArrows', 'uPoiCount', 'uPois']) {
+                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uSphereCenterOffset2', 'uPanorama2', 'uMix', 'uEyeHeight', 'uArrowCount', 'uArrows', 'uPoiCount', 'uPois']) {
                     this.uniforms[name] = gl.getUniformLocation(this.program, name);
                 }
 
@@ -464,17 +548,23 @@ export class Photosphere {
                 gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
                 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
 
-                this.textureReady = false;
-                this.texture = gl.createTexture();
-                gl.bindTexture(gl.TEXTURE_2D, this.texture);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
                 // REPEAT horizontally so the equirectangular seam behind the
                 // camera wraps seamlessly (WebGL2/NPOT — MapLibre 6). Clamp
-                // vertically at the poles (mapmax #40).
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                // vertically at the poles (mapmax #40). texture2 holds the next
+                // panorama during a walk transition (#5b).
+                const makeTexture = () => {
+                    const tex = gl.createTexture();
+                    gl.bindTexture(gl.TEXTURE_2D, tex);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    return tex;
+                };
+                this.textureReady = false;
+                this.texture = makeTexture();
+                this.texture2 = makeTexture();
 
                 self._gl = gl;
                 self._layerCtx = this;
@@ -504,6 +594,13 @@ export class Photosphere {
                 gl.uniform1f(this.uniforms.uAlpha, self._opacity * self._blend);
                 gl.uniform3f(this.uniforms.uSphereCenterOffset, ...self._sphereCenterOffset);
                 gl.uniform1f(this.uniforms.uSphereRadius, self._options.radius);
+
+                // Second sphere + crossfade for the walk transition (#5b).
+                gl.activeTexture(gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_2D, this.texture2);
+                gl.uniform1i(this.uniforms.uPanorama2, 1);
+                gl.uniform3f(this.uniforms.uSphereCenterOffset2, ...self._sphereCenterOffset2);
+                gl.uniform1f(this.uniforms.uMix, self._mix);
 
                 // Ground navigation arrows (mapmax #26): positions on the floor,
                 // at a fixed distance toward each target bearing.
@@ -544,8 +641,18 @@ export class Photosphere {
     }
 
     _updateCameraWhileInside() {
-        const { lngLat, eyeHeight } = this._options;
-        const eyeMercator = MercatorCoordinate.fromLngLat(lngLat);
+        // During a walk the transition loop drives the eye; don't let a look-drag
+        // snap it back to the old anchor mid-dolly (#5b).
+        if (this._transitioning) return;
+        this._positionEyeAt(this._options.lngLat);
+    }
+
+    // Point the map camera from an eye at `eyeLngLat` (eye height) along the
+    // current yaw/pitch. Generalized so a walk transition can dolly the eye
+    // between two anchors (#5b) while enter/look use the fixed anchor.
+    _positionEyeAt(eyeLngLat) {
+        const { eyeHeight } = this._options;
+        const eyeMercator = MercatorCoordinate.fromLngLat(eyeLngLat);
         const metresToMercatorUnits = eyeMercator.meterInMercatorCoordinateUnits();
 
         const yawRad = this._yawDeg * Math.PI / 180;
@@ -557,7 +664,7 @@ export class Photosphere {
         ).toLngLat();
 
         const cameraOptions = this._map.calculateCameraOptionsFromTo(
-            lngLat, eyeHeight, targetLngLat,
+            eyeLngLat, eyeHeight, targetLngLat,
             eyeHeight + this._lookTargetDistanceMetres * Math.sin(pitchRad));
         this._map.jumpTo(cameraOptions);
     }

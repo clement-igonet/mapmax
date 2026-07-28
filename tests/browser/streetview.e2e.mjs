@@ -102,6 +102,8 @@ const nav = await page.evaluate(async () => {
   const walkTarget = seqPanos.find((p) => p.id !== pano.id) || seq.find((p) => p.id !== pano.id);
   let walkedToNext = false;
   let walkStillInside = false;
+  let smoothWalk = false;
+  let walkMixSeen = 0;
   if (walkTarget) {
     // Pre-warm the target image so the in-container texture upload is
     // deterministic (first-load into a shared GL texture is flaky under
@@ -118,9 +120,24 @@ const nav = await page.evaluate(async () => {
       const l = sv._photosphere().lngLat;
       return l && Math.abs(l[0] - walkTarget.lon) < 1e-9 && Math.abs(l[1] - walkTarget.lat) < 1e-9;
     };
+    // Prove it's a smooth dolly, not a teleport (#5b): sample the crossfade
+    // weight + transition flag across the walk. A teleport would flip lngLat with
+    // uMix never leaving 0 and _transitioning never true.
+    let sawMix = 0;
+    let sawTransitioning = false;
+    const t0 = performance.now();
+    const sampler = () => {
+      const ps = sv._photosphere();
+      sawMix = Math.max(sawMix, ps._mix || 0);
+      if (ps._transitioning) sawTransitioning = true;
+      if (!atTarget() && performance.now() - t0 < 20000) requestAnimationFrame(sampler);
+    };
+    requestAnimationFrame(sampler);
     await waitFor(atTarget, 20000);
     walkedToNext = sv.currentPicture()?.id === walkTarget.id && atTarget() && walkTarget.id !== pic0;
     walkStillInside = sv.isStreetMode() && sv._photosphere().mode === 'inside';
+    smoothWalk = sawTransitioning && sawMix > 0.05 && sawMix <= 1.0001;
+    walkMixSeen = sawMix;
   }
   // #34: the page shows the current picture's id, and it updates after the walk.
   const picInfoText = document.getElementById('pic-info')?.textContent || '';
@@ -214,7 +231,7 @@ const nav = await page.evaluate(async () => {
            osmTiledCount: osmTiled.length, panoramaxTiledCount: panoramaxTiled.length,
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
-           dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside,
+           dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside, smoothWalk, walkMixSeen,
            navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
@@ -242,6 +259,7 @@ if (nav.skipped) {
   assert.ok(nav.pictureStableAfterDrag, 'dragging to look translated to another photosphere (#30)');
   assert.ok(nav.walkedToNext, 'walk to an adjacent panorama did not move position (#5)');
   assert.ok(nav.walkStillInside, 'walk exited street view instead of staying inside (#5)');
+  assert.ok(nav.smoothWalk, `walk teleported instead of dollying — crossfade never ramped (mix seen ${nav.walkMixSeen?.toFixed?.(2)}) (#5b)`);
   assert.ok(nav.hasGlNavLayers, 'incrusted nav out of sync — a map-plane nav layer exists, or shader arrow/POI counts mismatch (#39)');
   assert.ok(nav.navTargets > 0, 'no navigation targets (arrows/POI) to neighbour 360s');
   assert.ok(nav.arrowsNotClipped, 'shader ground arrow was not hittable across grazing pitches — would be cropped (#26)');
