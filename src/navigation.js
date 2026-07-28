@@ -177,5 +177,6 @@ export async function goToNearest(map, lngLat, maxMeters = 30) {
   return enterStreetView(map, best);
 }
 
-// Test/introspection helper.
+// Test/introspection helpers.
 export const _navCounts = () => ({ arrows: arrows.length, poi: pois.length });
+export const _navArrows = () => arrows;

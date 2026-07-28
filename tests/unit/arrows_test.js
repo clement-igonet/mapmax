@@ -33,16 +33,33 @@ Deno.test('pickArrows: filters self, near-duplicates and far pictures', () => {
   assertEquals(arrows.map((a) => a.targetId), ['ok']);
 });
 
-Deno.test('pickArrows: arrow lies on the ground toward the target, near the camera', () => {
+Deno.test('pickArrows: far target → arrow at arrowDist toward it', () => {
   const [a] = pickArrows(cur, [at('t', 37, 20)]);
   const d = distanceM(cur.lon, cur.lat, a.lon, a.lat);
-  assertAlmostEquals(d, 5.5, 0.05); // ARROW_DEFAULTS.arrowDist
-  assert(d < a.dist, 'arrow must be closer than the target');
+  assertAlmostEquals(d, 9, 0.05); // ARROW_DEFAULTS.arrowDist
+  assert(d < a.dist, 'arrow must be closer than a far target');
 });
 
-Deno.test('pickArrows: close target pulls the arrow closer than default', () => {
-  const [a] = pickArrows(cur, [at('t', 90, 4)]);
-  assertAlmostEquals(distanceM(cur.lon, cur.lat, a.lon, a.lat), 2.4, 0.05);
+Deno.test('pickArrows: close target → arrow kept at minArrowDist (never right on the camera) #26', () => {
+  const [a] = pickArrows(cur, [at('t', 90, 3)]); // neighbour only 3 m away
+  assertAlmostEquals(distanceM(cur.lon, cur.lat, a.lon, a.lat), 6, 0.05); // minArrowDist
+});
+
+// Automated crop guard: with the camera at the picture, no arrow polygon vertex
+// may come within ~4 m — closer than that a foreshortened ground polygon crosses
+// the near plane and gets clipped (the "cropped arrow"). Uses the same 1.4 scale
+// as the renderer (navigation.js).
+Deno.test('pickArrows + groundArrowPolygon: no arrow vertex near the camera (no crop) #26', () => {
+  const cam = { id: 'me', lon: 2.35, lat: 48.85, sequenceId: 'A' };
+  const dense = [at('n2', 0, 2), at('n3', 95, 3), at('n4', 185, 4), at('n25', 270, 25)];
+  const arrows = pickArrows(cam, dense);
+  assert(arrows.length >= 3, 'expected several arrows');
+  for (const a of arrows) {
+    for (const [lon, lat] of groundArrowPolygon(a.lon, a.lat, a.bearing, 1.4)[0]) {
+      const d = distanceM(cam.lon, cam.lat, lon, lat);
+      assert(d >= 4, `arrow vertex ${d.toFixed(1)} m from camera — would be near-plane-clipped`);
+    }
+  }
 });
 
 Deno.test('groundArrowPolygon: real ground geometry, closed ring, tip points along bearing (#26)', () => {

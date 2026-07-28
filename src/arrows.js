@@ -10,7 +10,11 @@ export const ARROW_DEFAULTS = {
   minDist: 1.5, // ignore near-duplicates at the same spot
   sector: 35, // one arrow per direction sector (degrees)
   limit: 6,
-  arrowDist: 5.5, // where the arrow lies on the ground, from the camera
+  // Where the arrow lies on the ground, from the camera. Kept in a safe band so
+  // the arrow (and its polygon, ~2 m long) never gets close enough to cross the
+  // camera near plane and be clipped — even for a very close neighbour (#26).
+  minArrowDist: 6,
+  arrowDist: 9,
 };
 
 export function pickArrows(current, candidates, options = {}) {
@@ -29,10 +33,10 @@ export function pickArrows(current, candidates, options = {}) {
   for (const s of scored) {
     if (chosen.length >= o.limit) break;
     if (chosen.some((c) => Math.abs(angularDiff(c.bearing, s.bearing)) < o.sector)) continue;
-    const [lon, lat] = destinationPoint(
-      current.lon, current.lat, s.bearing,
-      Math.min(o.arrowDist, s.dist * 0.6)
-    );
+    // At least minArrowDist (never near the camera), at most arrowDist, and not
+    // overshooting a far neighbour beyond arrowDist.
+    const placeDist = Math.min(o.arrowDist, Math.max(o.minArrowDist, s.dist));
+    const [lon, lat] = destinationPoint(current.lon, current.lat, s.bearing, placeDist);
     chosen.push({
       targetId: s.pic.id,
       bearing: s.bearing,
