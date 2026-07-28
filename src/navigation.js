@@ -6,7 +6,7 @@
 // on the road even at eye-level pitch. queryRenderedFeatures is still unreliable
 // at that pitch, so hit-testing (click + hover cursor) is done in SCREEN space
 // via map.project() of each feature — robust at any pitch.
-import { chooseByHeading, pickArrows } from './arrows.js';
+import { chooseByHeading, groundArrowPolygon, pickArrows } from './arrows.js';
 import { STREET_POI_RADIUS_M } from './config.js';
 import { distanceM, isDragGesture } from './geo.js';
 import { getPicture, searchNearby } from './panoramax.js';
@@ -79,8 +79,11 @@ async function refresh(map, pic) {
     type: 'FeatureCollection',
     features: arrows.map((a) => ({
       type: 'Feature',
-      geometry: { type: 'Point', coordinates: a.lngLat },
-      properties: { bearing: a.bearing },
+      // Real ground geometry (fill polygon), not a billboard icon: it renders as
+      // continuous ground and is never clipped like a foreshortened icon quad
+      // near the camera (#26).
+      geometry: { type: 'Polygon', coordinates: groundArrowPolygon(a.lngLat[0], a.lngLat[1], a.bearing, 1.4) },
+      properties: {},
     })),
   });
   map.getSource(POI_SRC).setData({
@@ -98,7 +101,6 @@ function clearNav(map) {
 }
 
 function ensureLayers(map) {
-  if (!map.hasImage('nav-arrow')) map.addImage('nav-arrow', makeArrowImage(), { pixelRatio: 2 });
   // POI dots first, arrows on top — both above the photosphere custom layer
   // (added later than it), so they draw incrusted over the panorama.
   if (!map.getSource(POI_SRC)) map.addSource(POI_SRC, { type: 'geojson', data: EMPTY });
@@ -119,44 +121,19 @@ function ensureLayers(map) {
   }
   if (!map.getSource(ARROW_SRC)) map.addSource(ARROW_SRC, { type: 'geojson', data: EMPTY });
   if (!map.getLayer(ARROW_LAYER)) {
+    // Fill polygon draped on the road (real ground geometry) — never clipped
+    // like a billboard icon near the camera (#26).
     map.addLayer({
       id: ARROW_LAYER,
-      type: 'symbol',
+      type: 'fill',
       source: ARROW_SRC,
-      layout: {
-        'icon-image': 'nav-arrow',
-        'icon-rotate': ['get', 'bearing'],
-        'icon-rotation-alignment': 'map',
-        'icon-pitch-alignment': 'map', // flat on the road, pointing at the target
-        'icon-anchor': 'center',
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 17, 0.4, 22, 0.9],
+      paint: {
+        'fill-color': '#ffffff',
+        'fill-outline-color': 'rgba(20,40,90,0.9)',
+        'fill-opacity': 0.9,
       },
     });
   }
-}
-
-// White chevron with a dark outline, centred in its icon (never self-clipped),
-// pointing north so icon-rotate can take the target bearing directly.
-function makeArrowImage() {
-  const size = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(64, 16);
-  ctx.lineTo(112, 112);
-  ctx.lineTo(64, 88);
-  ctx.lineTo(16, 112);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.strokeStyle = 'rgba(20,40,90,0.9)';
-  ctx.lineWidth = 8;
-  ctx.stroke();
-  ctx.fill();
-  return ctx.getImageData(0, 0, size, size);
 }
 
 function go(map, id) {
