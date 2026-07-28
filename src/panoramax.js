@@ -71,14 +71,19 @@ export function normalizeItem(f) {
   const p = f.properties || {};
   const links = f.links || [];
   const io = p['pers:interior_orientation'] || {};
-  // The authoritative 360 marker is the GPano XMP projection type; fall back to
-  // field-of-view / pano flag / sensor-ratio heuristic when exif is absent.
+  // A full photosphere is claimed ONLY on authoritative 360° metadata: the GPano
+  // equirectangular projection tag, a ~360° field of view, or the STAC `pano`
+  // flag. A 2:1 sensor ratio is deliberately NOT accepted — flat wide-camera
+  // frames (e.g. 3168×1584) are also exactly 2:1, indistinguishable from a real
+  // pano (5640×2820) by ratio, so it produced false spheres (#40). Anything
+  // without that metadata is 'flat' and is placed as a patch (#46/#47), never
+  // stretched across the whole sphere.
   const gpano = p.exif && p.exif['Xmp.GPano.ProjectionType'];
+  const fov = io.field_of_view;
   const type =
     gpano === 'equirectangular' ? 'equirectangular'
-    : io.field_of_view === 360 || p['pano'] === true ? 'equirectangular'
-    : io.field_of_view ? 'flat'
-    : guessTypeFromAssets(f);
+    : (typeof fov === 'number' && fov >= 355) || p['pano'] === true ? 'equirectangular'
+    : 'flat';
   return {
     id: f.id,
     lon: f.geometry.coordinates[0],
@@ -99,14 +104,6 @@ export function normalizeItem(f) {
     license: p.license,
     datetime: p.datetime,
   };
-}
-
-// Heuristic when the API gives no field of view: equirectangular derivates
-// are produced for 360 pictures; a 2:1 sensor ratio is also a strong hint.
-function guessTypeFromAssets(f) {
-  const dims = f.properties?.['pers:interior_orientation']?.sensor_array_dimensions;
-  if (dims && dims.length === 2 && Math.abs(dims[0] / dims[1] - 2) < 0.05) return 'equirectangular';
-  return 'flat';
 }
 
 export async function getPicture(id) {

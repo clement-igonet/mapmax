@@ -27,11 +27,37 @@ Deno.test('normalizeItem: field_of_view 360 means equirectangular', () => {
   assertEquals(normalizeItem(item).type, 'equirectangular');
 });
 
-Deno.test('normalizeItem: 2:1 sensor ratio heuristic means equirectangular', () => {
+Deno.test('normalizeItem: GPano equirectangular projection tag means equirectangular', () => {
   const item = structuredClone(fixture);
   delete item.properties['pers:interior_orientation'].field_of_view;
-  item.properties['pers:interior_orientation'].sensor_array_dimensions = [5760, 2880];
+  item.properties.exif = { 'Xmp.GPano.ProjectionType': 'equirectangular' };
   assertEquals(normalizeItem(item).type, 'equirectangular');
+});
+
+Deno.test('normalizeItem: pano flag means equirectangular', () => {
+  const item = structuredClone(fixture);
+  delete item.properties['pers:interior_orientation'].field_of_view;
+  item.properties.pano = true;
+  assertEquals(normalizeItem(item).type, 'equirectangular');
+});
+
+// #40 regression: a 2:1 sensor ratio must NOT by itself make a photosphere —
+// flat wide-camera frames (3168×1584) are also 2:1 and were wrongly stretched
+// across the whole sphere. Without 360° metadata the picture is flat.
+Deno.test('normalizeItem: 2:1 sensor ratio alone is NOT equirectangular (#40)', () => {
+  const item = structuredClone(fixture);
+  delete item.properties['pers:interior_orientation'].field_of_view;
+  delete item.properties.pano;
+  delete item.properties.exif;
+  item.properties['pers:interior_orientation'].sensor_array_dimensions = [3168, 1584];
+  assertEquals(normalizeItem(item).type, 'flat');
+});
+
+// A partial-FOV equirectangular derivative (e.g. 180°) is not a full sphere.
+Deno.test('normalizeItem: sub-360 field of view is flat, not a full sphere (#40)', () => {
+  const item = structuredClone(fixture);
+  item.properties['pers:interior_orientation'].field_of_view = 180;
+  assertEquals(normalizeItem(item).type, 'flat');
 });
 
 Deno.test('idFromHref extracts item ids', () => {
