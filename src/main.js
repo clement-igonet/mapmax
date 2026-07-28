@@ -3,12 +3,13 @@
 import * as maplibregl from 'maplibre-gl';
 import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { enterStreetView, exitStreetView, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
+import { _photosphere, enterStreetView, exitStreetView, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
+import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 
 const status = (msg) => {
@@ -78,6 +79,57 @@ function renderPicInfo(pic) {
 }
 onPictureChanged(renderPicInfo);
 
+// Deep-link (#54): keep ?pic=<id>&pv=<yaw>_<pitch> in the URL so reloading or
+// sharing returns you to the same photosphere (and look direction) or the map.
+function revealStreetUI() {
+  document.getElementById('exit-street').hidden = false;
+  document.getElementById('blend-control').hidden = false;
+  document.getElementById('minimap').hidden = false;
+}
+let currentPic = null;
+onPictureChanged((pic) => {
+  currentPic = pic;
+  const ps = _photosphere();
+  if (pic) writePicToUrl(pic.id, ps?.yaw, ps?.pitch);
+  else clearPicFromUrl();
+});
+// Update the saved look (yaw/pitch) as you drag / keyboard-look, debounced.
+let urlSyncTimer = 0;
+map.on('move', () => {
+  if (!isStreetMode() || !currentPic) return;
+  clearTimeout(urlSyncTimer);
+  urlSyncTimer = setTimeout(() => {
+    if (isStreetMode() && currentPic) writePicToUrl(currentPic.id, _photosphere()?.yaw, _photosphere()?.pitch);
+  }, 350);
+});
+// Restore an in-photosphere state from the URL once the map is ready.
+map.on('load', async () => {
+  const link = readPicFromUrl();
+  if (!link) return;
+  try {
+    const pic = await getPicture(link.id);
+    if (!isEquirectangular(pic)) return; // only 360° panoramas enter the sphere
+    status('Restoring 360° panorama…');
+    await enterStreetView(map, pic);
+    revealStreetUI();
+    status('360° panorama — drag to look, click a ground arrow to walk, Esc to exit.');
+    if (Number.isFinite(link.yaw)) {
+      const ps = _photosphere();
+      const applyLook = () => {
+        if (!ps) return;
+        if (ps.mode === 'inside') {
+          ps.look(link.yaw - ps.yaw, (Number.isFinite(link.pitch) ? link.pitch : ps.pitch) - ps.pitch);
+        } else {
+          requestAnimationFrame(applyLook);
+        }
+      };
+      applyLook();
+    }
+  } catch (err) {
+    console.error('deep-link restore failed', err);
+  }
+});
+
 map.on('style.load', () => {
   ensureBuildings3D();
   addPanoramaxLayers(map);
@@ -115,9 +167,7 @@ onPictureClick(map, async (id) => {
     }
     status('Loading image…');
     await enterStreetView(map, pic);
-    document.getElementById('exit-street').hidden = false;
-    document.getElementById('blend-control').hidden = false;
-    document.getElementById('minimap').hidden = false;
+    revealStreetUI();
     status('360° panorama — drag to look, click a ground arrow to walk, Esc to exit.');
   } catch (err) {
     console.error(err);
