@@ -120,6 +120,17 @@ const nav = await page.evaluate(async () => {
   // #52: the shader rotates the texture by the picture heading (view:azimuth) so
   // the photo aligns with the vector world instead of assuming centre = north.
   const panoYawApplied = sv._photosphere()._panoYawDeg === (pano.heading || 0);
+  // #60: inside a photosphere the far tiled building extrusions are replaced by a
+  // near-only GeoJSON bubble. The bubble layer exists, and the tiled extrusions
+  // stay hidden even when blend re-reveals the other vector layers.
+  const nbLayerExists = !!map.getLayer('mapmax-buildings-near');
+  const extrusionLayers = map.getStyle().layers.filter((l) => l.type === 'fill-extrusion' && l.id !== 'mapmax-buildings-near');
+  sv.setBlend(0.5); // reveal vector layers (tilebudget resumes tiled extrusions)
+  map.setBearing(map.getBearing() + 0.02); // nudge a move so the bubble re-hides them
+  await waitFor(() => false, 500);
+  const tiledBuildingsHiddenAtBlend = extrusionLayers.length > 0 &&
+    extrusionLayers.every((l) => map.getLayoutProperty(l.id, 'visibility') === 'none');
+  sv.setBlend(1); // restore photo-only for the later blend tests
   // #24: map vertical FOV must equal the sphere's FOV (photo/vector in sync).
   const fovSyncEnter = Math.abs(map.getVerticalFieldOfView() - sv._photosphere()._options.fov) < 0.01;
   // #30: dragging to look changes the view but must NOT translate to another pano.
@@ -242,8 +253,11 @@ const nav = await page.evaluate(async () => {
   // #6 blend: drag to mixed → OSM vector comes back; #27: Panoramax tiles stay
   // suspended (far POIs never load), only nearby ≤50 m POIs show via GeoJSON.
   const { sliderToBlend } = await import('./src/target.js');
-  const osmTiled = tiledLayerIds(map.getStyle(), ['panoramax']);
-  const panoramaxTiled = tiled.filter((id) => !osmTiled.includes(id));
+  // Building extrusions are intentionally kept hidden inside a photosphere (#60,
+  // replaced by the near-building bubble), so exclude them from the "blend
+  // reveals OSM" check — they must NOT come back at blend.
+  const panoramaxTiled = tiled.filter((id) => tiledLayerIds(map.getStyle()).includes(id) && !tiledLayerIds(map.getStyle(), ['panoramax']).includes(id));
+  const osmTiled = tiledLayerIds(map.getStyle(), ['panoramax']).filter((id) => map.getLayer(id)?.type !== 'fill-extrusion');
   sv.setBlend(sliderToBlend(50));
   const osmVisibleAtMixed = osmTiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
@@ -278,6 +292,7 @@ const nav = await page.evaluate(async () => {
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside, smoothWalk, walkMixSeen,
            panoYawApplied, walkPanoYawApplied, urlPicOnEnter, deepLinkId, urlPicAfterExit,
+           nbLayerExists, tiledBuildingsHiddenAtBlend,
            navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
@@ -315,6 +330,8 @@ if (nav.skipped) {
   assert.equal(nav.navAfterExit, 0, 'navigation targets not cleared on exit');
   assert.equal(nav.urlPicOnEnter, nav.deepLinkId, 'entering a photosphere did not write ?pic= to the URL (#54)');
   assert.equal(nav.urlPicAfterExit, null, 'exiting did not clear ?pic= from the URL (#54)');
+  assert.ok(nav.nbLayerExists, 'near-building bubble layer missing (#60)');
+  assert.ok(nav.tiledBuildingsHiddenAtBlend, 'far tiled building extrusions not hidden inside a photosphere, even at blend (#60)');
   assert.ok(nav.picInfoShowsId, 'page does not show the current picture id (#34)');
   assert.ok(nav.enteredIs360, 'entered a non-360 picture into the sphere (#40)');
   assert.ok(nav.picInfoHasBadge, '360/flat badge missing (#40)');

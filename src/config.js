@@ -27,6 +27,12 @@ export const STREET_MAX_PITCH = 179;
 export const MAP_VISIBLE_RADIUS_M = 160;
 export const MAP_MIN_PITCH_CAP = 20;
 
+// Street mode (#60): only render 3D building extrusions within this radius of the
+// viewer. MapLibre has no per-feature distance expression, so the far tiled
+// skyline is replaced by a GeoJSON "bubble" of just the nearby buildings — the
+// only ones that line up with the photo anyway. Customizable.
+export const BUILDINGS_RADIUS_M = 50;
+
 // In street mode, only show/load Panoramax pictures within this radius (meters)
 // around the current photosphere — keeps the scene light and POIs nearby (#27).
 export const STREET_POI_RADIUS_M = 50;
