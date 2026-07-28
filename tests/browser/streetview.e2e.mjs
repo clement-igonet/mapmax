@@ -82,6 +82,9 @@ const nav = await page.evaluate(async () => {
   await waitFor(() => sv._photosphere()?.mode === 'inside', 10000);
   const enteredMode = sv._photosphere()?.mode;
   const inStreet = sv.isStreetMode();
+  // #52: the shader rotates the texture by the picture heading (view:azimuth) so
+  // the photo aligns with the vector world instead of assuming centre = north.
+  const panoYawApplied = sv._photosphere()._panoYawDeg === (pano.heading || 0);
   // #24: map vertical FOV must equal the sphere's FOV (photo/vector in sync).
   const fovSyncEnter = Math.abs(map.getVerticalFieldOfView() - sv._photosphere()._options.fov) < 0.01;
   // #30: dragging to look changes the view but must NOT translate to another pano.
@@ -104,6 +107,7 @@ const nav = await page.evaluate(async () => {
   let walkStillInside = false;
   let smoothWalk = false;
   let walkMixSeen = 0;
+  let walkPanoYawApplied = false;
   if (walkTarget) {
     // Pre-warm the target image so the in-container texture upload is
     // deterministic (first-load into a shared GL texture is flaky under
@@ -138,6 +142,7 @@ const nav = await page.evaluate(async () => {
     walkStillInside = sv.isStreetMode() && sv._photosphere().mode === 'inside';
     smoothWalk = sawTransitioning && sawMix > 0.05 && sawMix <= 1.0001;
     walkMixSeen = sawMix;
+    walkPanoYawApplied = sv._photosphere()._panoYawDeg === (walkTarget.heading || 0); // #52
   }
   // #34: the page shows the current picture's id, and it updates after the walk.
   const picInfoText = document.getElementById('pic-info')?.textContent || '';
@@ -232,6 +237,7 @@ const nav = await page.evaluate(async () => {
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside, smoothWalk, walkMixSeen,
+           panoYawApplied, walkPanoYawApplied,
            navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
@@ -260,6 +266,8 @@ if (nav.skipped) {
   assert.ok(nav.walkedToNext, 'walk to an adjacent panorama did not move position (#5)');
   assert.ok(nav.walkStillInside, 'walk exited street view instead of staying inside (#5)');
   assert.ok(nav.smoothWalk, `walk teleported instead of dollying — crossfade never ramped (mix seen ${nav.walkMixSeen?.toFixed?.(2)}) (#5b)`);
+  assert.ok(nav.panoYawApplied, 'photo texture not oriented by the picture heading — would misalign with the vector world (#52)');
+  assert.ok(nav.walkPanoYawApplied, 'walked panorama not re-oriented by its own heading (#52)');
   assert.ok(nav.hasGlNavLayers, 'incrusted nav out of sync — a map-plane nav layer exists, or shader arrow/POI counts mismatch (#39)');
   assert.ok(nav.navTargets > 0, 'no navigation targets (arrows/POI) to neighbour 360s');
   assert.ok(nav.arrowsNotClipped, 'shader ground arrow was not hittable across grazing pitches — would be cropped (#26)');

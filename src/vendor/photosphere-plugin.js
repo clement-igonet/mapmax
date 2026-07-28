@@ -41,6 +41,8 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform vec3 uSphereCenterOffset2;
     uniform sampler2D uPanorama2;
     uniform float uMix;            // 0 = current pano only, 1 = next pano only
+    uniform float uPanoYaw;        // world azimuth (rad) the current image centre faces (#52)
+    uniform float uPanoYaw2;       // ...and the next image's, during a walk
     uniform float uEyeHeight;      // eye height above the ground (m)
     uniform int uArrowCount;
     uniform vec2 uArrows[${MAX_ARROWS}]; // ground positions (east, north) m from the eye
@@ -48,7 +50,10 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform vec2 uPois[${MAX_POIS}];     // neighbour-pano ground positions (east, north) m
 
     // Ray-cast one panorama sphere; returns rgb + hit-alpha (a = 0 on a miss).
-    vec4 sampleSphere(vec3 viewDir, vec3 centerOffset, sampler2D tex) {
+    // panoYaw (radians) is the world azimuth the image centre (u = 0.5) faces —
+    // Panoramax stores this as view:azimuth, so subtracting it aligns the photo
+    // to the map/vector world instead of assuming the centre points north (#52).
+    vec4 sampleSphere(vec3 viewDir, vec3 centerOffset, sampler2D tex, float panoYaw) {
         vec3 originToCenter = -centerOffset;
         float b = dot(originToCenter, viewDir);
         float c = dot(originToCenter, originToCenter) - uSphereRadius * uSphereRadius;
@@ -60,7 +65,7 @@ const FRAGMENT_SHADER_SOURCE = `
         float t = tNear > 0.0 ? tNear : tFar;
         if (t < 0.0) return vec4(0.0);
         vec3 normal = normalize(viewDir * t - centerOffset);
-        float theta = atan(normal.x, normal.y);
+        float theta = atan(normal.x, normal.y) - panoYaw;
         float phi = asin(clamp(normal.z, -1.0, 1.0));
         vec4 color = texture2D(tex, vec2(0.5 + theta / (2.0 * 3.14159265359), 0.5 - phi / 3.14159265359));
         return vec4(color.rgb, color.a);
@@ -90,11 +95,11 @@ const FRAGMENT_SHADER_SOURCE = `
         // Base colour: the panorama sphere. While walking (uMix > 0) a second
         // sphere for the next panorama is cross-faded in as the eye dollies from
         // one anchor to the other — a smooth translation, not a teleport (#5b).
-        vec4 s1 = sampleSphere(viewDir, uSphereCenterOffset, uPanorama);
+        vec4 s1 = sampleSphere(viewDir, uSphereCenterOffset, uPanorama, uPanoYaw);
         vec3 rgb;
         float a;
         if (uMix > 0.0) {
-            vec4 s2 = sampleSphere(viewDir, uSphereCenterOffset2, uPanorama2);
+            vec4 s2 = sampleSphere(viewDir, uSphereCenterOffset2, uPanorama2, uPanoYaw2);
             rgb = mix(s1.rgb, s2.rgb, uMix);
             a = mix(s1.a, s2.a, uMix) * uAlpha;
         } else {
@@ -200,6 +205,8 @@ export class Photosphere {
         this._sphereCenterOffset2 = [0, 0, 0]; // next pano while walking (#5b)
         this._mix = 0; // crossfade weight during a walk transition
         this._transitioning = false;
+        this._panoYawDeg = 0; //  world azimuth the current image centre faces (#52)
+        this._panoYawDeg2 = 0; // ...the next image's, during a walk
         this._gl = null;
         this._layerCtx = null;
 
@@ -366,8 +373,12 @@ export class Photosphere {
             this._savedFov = this._map.getVerticalFieldOfView();
         }
         this._applyMapFov();
-        // Start looking toward the picture's heading, if provided.
-        this._yawDeg = target && typeof target.bearing === 'number' ? target.bearing : 0;
+        // Start looking toward the picture's heading, if provided. That heading
+        // is also the world azimuth the image centre faces, so the shader rotates
+        // the texture by it to align the photo with the vector world (#52).
+        const heading = target && typeof target.bearing === 'number' ? target.bearing : 0;
+        this._yawDeg = heading;
+        this._panoYawDeg = heading;
         this._pitchDeg = 0;
         this._recalibrateLookTargetDistance();
         const { lngLat, zoom, eyeHeight, onEnter } = this._options;
@@ -388,6 +399,8 @@ export class Photosphere {
         }
         const fromAnchor = this._options.lngLat;
         const toAnchor = target.lngLat || fromAnchor;
+        // Orient the next sphere by its own heading during the crossfade (#52).
+        this._panoYawDeg2 = typeof target.bearing === 'number' ? target.bearing : this._panoYawDeg;
         this._loadInto('texture2', target.imageUrl, (err) => {
             if (this._mode !== 'inside') return;
             if (err) { // fall back to an instant swap rather than getting stuck
@@ -440,6 +453,8 @@ export class Photosphere {
         }
         this._options.lngLat = toAnchor;
         this._options.imageUrl = imageUrl;
+        // Promote the next pano's heading to current (#52).
+        if (typeof target.bearing === 'number') this._panoYawDeg = target.bearing;
         this._endTransitionState();
         this._recalibrateLookTargetDistance();
         this._updateCameraWhileInside();
@@ -540,7 +555,7 @@ export class Photosphere {
 
                 this.aPosition = gl.getAttribLocation(this.program, 'aPosition');
                 this.uniforms = {};
-                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uSphereCenterOffset2', 'uPanorama2', 'uMix', 'uEyeHeight', 'uArrowCount', 'uArrows', 'uPoiCount', 'uPois']) {
+                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uSphereCenterOffset2', 'uPanorama2', 'uMix', 'uPanoYaw', 'uPanoYaw2', 'uEyeHeight', 'uArrowCount', 'uArrows', 'uPoiCount', 'uPois']) {
                     this.uniforms[name] = gl.getUniformLocation(this.program, name);
                 }
 
@@ -601,6 +616,8 @@ export class Photosphere {
                 gl.uniform1i(this.uniforms.uPanorama2, 1);
                 gl.uniform3f(this.uniforms.uSphereCenterOffset2, ...self._sphereCenterOffset2);
                 gl.uniform1f(this.uniforms.uMix, self._mix);
+                gl.uniform1f(this.uniforms.uPanoYaw, self._panoYawDeg * Math.PI / 180);
+                gl.uniform1f(this.uniforms.uPanoYaw2, self._panoYawDeg2 * Math.PI / 180);
 
                 // Ground navigation arrows (mapmax #26): positions on the floor,
                 // at a fixed distance toward each target bearing.
