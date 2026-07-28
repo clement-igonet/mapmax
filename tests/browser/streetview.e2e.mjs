@@ -143,6 +143,20 @@ const nav = await page.evaluate(async () => {
   const nc = navMod._navCounts();
   const navTargets = nc.arrows + nc.poi;
   const hasGlNavLayers = !!map.getLayer('mapmax-nav-arrows') && !!map.getLayer('mapmax-nav-poi');
+  // #26 crop guard on REAL neighbours: every arrow polygon vertex must be >= 4 m
+  // from the camera, else a foreshortened ground polygon crosses the near plane
+  // and is clipped (the cropped arrow). Rotating just moves them across-screen,
+  // so a distance check covers every view direction at once.
+  const { groundArrowPolygon } = await import('./src/arrows.js');
+  const { distanceM } = await import('./src/geo.js');
+  const cam = sv.currentPicture();
+  let minArrowVertexDist = Infinity;
+  for (const a of navMod._navArrows()) {
+    for (const [lon, lat] of groundArrowPolygon(a.lngLat[0], a.lngLat[1], a.bearing, 1.4)[0]) {
+      minArrowVertexDist = Math.min(minArrowVertexDist, distanceM(cam.lon, cam.lat, lon, lat));
+    }
+  }
+  const arrowsNotClipped = !Number.isFinite(minArrowVertexDist) || minArrowVertexDist >= 4;
   const beforeId = sv.currentPicture()?.id;
   const canvas = map.getCanvas();
   const fire = (t, x, y) => canvas.dispatchEvent(new MouseEvent(t, { clientX: x, clientY: y, bubbles: true, button: 0 }));
@@ -190,7 +204,7 @@ const nav = await page.evaluate(async () => {
            osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside,
-           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit,
+           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, minArrowVertexDist,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
 });
@@ -219,6 +233,7 @@ if (nav.skipped) {
   assert.ok(nav.walkStillInside, 'walk exited street view instead of staying inside (#5)');
   assert.ok(nav.hasGlNavLayers, 'incrusted GL nav layers (arrows/POI) missing');
   assert.ok(nav.navTargets > 0, 'no navigation targets (arrows/POI) to neighbour 360s');
+  assert.ok(nav.arrowsNotClipped, `arrow polygon vertex ${nav.minArrowVertexDist?.toFixed?.(1)} m from camera — would be cropped (#26)`);
   assert.ok(nav.clickEmptyStable, 'clicking empty space navigated — must only navigate on a feature (#32)');
   assert.equal(nav.navAfterExit, 0, 'navigation targets not cleared on exit');
   assert.ok(nav.picInfoShowsId, 'page does not show the current picture id (#34)');
