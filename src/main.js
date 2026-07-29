@@ -12,6 +12,11 @@ import { setupClutterCap } from './mapclutter.js';
 import { setupNearBuildings } from './nearbuildings.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
+import { setupLicenseGate } from './licensegate.js';
+
+// On the sandbox host, require a Polar license key before revealing the app
+// (#76). No-op on www / localhost. Fire-and-forget: it mounts its own overlay.
+setupLicenseGate();
 
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
