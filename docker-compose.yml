@@ -22,10 +22,18 @@ services:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - web
+      - web-sandbox
 
   web:
     build: .
     # No host port: reachable only through the edge (and the compose network).
+
+  # Isolated sandbox environment (sandbox.mapmax.confinia.io): its own container
+  # behind the edge's access gate, so experimental/paid-tier builds can diverge
+  # from production. Same image for now; point `build` at a sandbox checkout to
+  # split the code line.
+  web-sandbox:
+    build: .
 
   e2e:
     build: tests/browser
