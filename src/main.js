@@ -3,7 +3,7 @@
 import * as maplibregl from 'maplibre-gl';
 import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH } from './config.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, enterStreetView, exitStreetView, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
+import { _photosphere, enterStreetView, exitStreetView, flipCurrentPano, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -86,6 +86,7 @@ function revealStreetUI() {
   document.getElementById('exit-street').hidden = false;
   document.getElementById('blend-control').hidden = false;
   document.getElementById('minimap').hidden = false;
+  document.getElementById('flip-pano').hidden = false;
 }
 let currentPic = null;
 onPictureChanged((pic) => {
@@ -225,9 +226,18 @@ const leaveStreetUI = () => {
   exitBtn.hidden = true;
   document.getElementById('blend-control').hidden = true;
   document.getElementById('minimap').hidden = true;
+  document.getElementById('flip-pano').hidden = true;
   blendSlider.value = '100';
   status('Zoom in and click a Panoramax picture dot.');
 };
+
+// Manual 180° flip for a mis-oriented sequence (#69) — backstop when the sun
+// compass can't see the sun (evening rides, narrow alleys). Persists per
+// sequence and re-renders immediately.
+document.getElementById('flip-pano').addEventListener('click', () => {
+  const applied = flipCurrentPano();
+  if (applied != null) status(`Photo rotated ${applied ? '180°' : 'back to metadata orientation'} for this sequence.`);
+});
 exitBtn.addEventListener('click', () => {
   if (isStreetMode()) exitStreetView();
   leaveStreetUI();

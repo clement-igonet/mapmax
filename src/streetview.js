@@ -6,7 +6,8 @@ import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH } from './config.js';
 import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
-import { sunYawOffset } from './sunflip.js';
+import { sunYawVerdict } from './sunflip.js';
+import { getSequence } from './panoramax.js';
 
 export { pictureToTarget };
 
@@ -25,27 +26,57 @@ const emit = (pic) => {
   for (const cb of listeners) cb(pic);
 };
 
-// Sun-compass verdicts per sequence (#66): the mount is constant within a
-// sequence, so one conclusive detection covers its shaded pictures too.
-// Conclusive verdicts persist in localStorage; inconclusive ones retry later.
+// Sun-compass verdicts per sequence (#66/#69): the mount is constant within a
+// sequence, so one conclusive detection covers its shaded pictures too. When the
+// entered picture is inconclusive (evening ride, narrow alley), scan a few other
+// pictures of the sequence — the ride usually crosses sunlight somewhere. A
+// manual override (the flip button, #69) always wins over the auto verdict.
 const yawVerdicts = new Map();
 const YAW_KEY = (k) => `mapmax:yawflip:${k}`;
+const OVERRIDE_KEY = (k) => `mapmax:yawoverride:${k}`;
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
+
 async function resolveYawOffset(pic) {
   if (pic.type !== 'equirectangular') return 0;
   const key = pic.sequenceId || pic.id;
+  const override = lsGet(OVERRIDE_KEY(key));
+  if (override != null) return +override;
   if (yawVerdicts.has(key)) return yawVerdicts.get(key);
-  try {
-    const stored = localStorage.getItem(YAW_KEY(key));
-    if (stored != null) { yawVerdicts.set(key, +stored); return +stored; }
-  } catch { /* private mode */ }
-  const offset = await sunYawOffset(pic);
-  // Only a positive flip detection is conclusive enough to cache persistently;
-  // "no sun found" keeps retrying on later pictures of the sequence.
-  if (offset === 180) {
-    yawVerdicts.set(key, offset);
-    try { localStorage.setItem(YAW_KEY(key), String(offset)); } catch { /* ignore */ }
+  const stored = lsGet(YAW_KEY(key));
+  if (stored != null) { yawVerdicts.set(key, +stored); return +stored; }
+
+  let verdict = await sunYawVerdict(pic);
+  if (verdict == null && pic.sequenceId) {
+    // Sequence-wide scan (#69): try up to 8 pictures spread across the ride.
+    try {
+      const seq = (await getSequence(pic.sequenceId, 120)).filter((p) => p.id !== pic.id && p.type === 'equirectangular');
+      const step = Math.max(1, Math.floor(seq.length / 8));
+      for (let i = 0; i < seq.length && verdict == null; i += step) {
+        verdict = await sunYawVerdict(seq[i]);
+      }
+    } catch { /* offline etc. — stay inconclusive */ }
   }
-  return offset;
+  if (verdict != null) {
+    // Conclusive either way (sun seen): cache persistently for the sequence.
+    yawVerdicts.set(key, verdict);
+    lsSet(YAW_KEY(key), String(verdict));
+    return verdict;
+  }
+  return 0; // inconclusive — uncached so later pictures keep trying
+}
+
+// Manual 180° flip for the current sequence (#69): overrides the auto verdict,
+// persists, and re-renders the current pano immediately.
+export function flipCurrentPano() {
+  if (!current || !photosphere) return null;
+  const key = current.sequenceId || current.id;
+  const next = ((current.yawOffset || 0) + 180) % 360;
+  lsSet(OVERRIDE_KEY(key), String(next));
+  current.yawOffset = next;
+  photosphere._panoYawDeg = ((current.heading || 0) + next) % 360;
+  svMap?.triggerRepaint();
+  return next;
 }
 
 // Enter street view at `pic` (first click) or walk to it (already inside).
