@@ -27,6 +27,21 @@ Deno.test('normalizeItem: field_of_view 360 means equirectangular', () => {
   assertEquals(normalizeItem(item).type, 'equirectangular');
 });
 
+Deno.test('normalizeItem: reads pers:roll / pers:pitch camera tilt (#47)', () => {
+  const item = structuredClone(fixture);
+  item.properties['pers:roll'] = 6.6;
+  item.properties['pers:pitch'] = 0.6;
+  const pic = normalizeItem(item);
+  assertEquals(pic.roll, 6.6);
+  assertEquals(pic.pitch, 0.6);
+});
+
+Deno.test('normalizeItem: roll/pitch default to 0 when absent', () => {
+  const pic = normalizeItem(fixture);
+  assertEquals(pic.roll, 0);
+  assertEquals(pic.pitch, 0);
+});
+
 Deno.test('normalizeItem: GPano equirectangular projection tag means equirectangular', () => {
   const item = structuredClone(fixture);
   delete item.properties['pers:interior_orientation'].field_of_view;

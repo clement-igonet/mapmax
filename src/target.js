@@ -5,7 +5,7 @@
 export function pictureToTarget(pic, preferHd = false) {
   const a = pic.assets || {};
   const imageUrl = preferHd ? a.hd || a.sd || a.thumb : a.sd || a.hd || a.thumb;
-  return { lngLat: [pic.lon, pic.lat], imageUrl, bearing: pic.heading || 0 };
+  return { lngLat: [pic.lon, pic.lat], imageUrl, bearing: pic.heading || 0, roll: pic.roll || 0, pitch: pic.pitch || 0 };
 }
 
 // Blend slider (0..100, %) → photo opacity (1..0). 100% = photo only,

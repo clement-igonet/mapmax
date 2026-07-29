@@ -92,6 +92,11 @@ export function normalizeItem(f) {
     lon: f.geometry.coordinates[0],
     lat: f.geometry.coordinates[1],
     heading: p['view:azimuth'] ?? 0,
+    // Camera tilt Panoramax re-derives during ingest (the GPano.Pose* headers are
+    // often 0.0 placeholders). Used to level the photosphere so its horizon
+    // matches the vector world (#47). Degrees; 0 when absent.
+    roll: p['pers:roll'] ?? 0,
+    pitch: p['pers:pitch'] ?? 0,
     hfov: io.field_of_view || (type === 'equirectangular' ? 360 : 70),
     type,
     sequenceId: f.collection,
