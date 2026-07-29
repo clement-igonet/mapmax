@@ -259,9 +259,19 @@ map.on('error', (e) => {
 
 // The Liberty style ships a `building-3d` fill-extrusion layer; if the style
 // ever changes, add our own extrusion from the OSM `building` source layer.
+// Buildings are held to L3+ (zoom ≥ 16, #80): below that they'd be tiny far
+// clutter — the distance budget wants near buildings at high zoom only.
+const BUILDINGS_MIN_ZOOM = 16;
 function ensureBuildings3D() {
   const style = map.getStyle();
-  if (style.layers.some((l) => l.type === 'fill-extrusion')) return;
+  const existing = style.layers.filter((l) => l.type === 'fill-extrusion' && l.id !== 'mapmax-buildings-near');
+  if (existing.length) {
+    // Hold the style's own extrusions (Liberty `building-3d`) to z16+.
+    for (const l of existing) {
+      try { map.setLayerZoomRange(l.id, BUILDINGS_MIN_ZOOM, 24); } catch { /* ignore */ }
+    }
+    return;
+  }
 
   const buildingLayer = style.layers.find((l) => l['source-layer'] === 'building');
   if (!buildingLayer) {
@@ -273,7 +283,7 @@ function ensureBuildings3D() {
     type: 'fill-extrusion',
     source: buildingLayer.source,
     'source-layer': 'building',
-    minzoom: 13,
+    minzoom: BUILDINGS_MIN_ZOOM,
     paint: {
       'fill-extrusion-color': 'hsl(35,8%,85%)',
       'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 6],
