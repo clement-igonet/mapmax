@@ -9,7 +9,9 @@ export const PANORAMAX_API = 'https://api.panoramax.xyz/api';
 // Initial view: central Paris, an area with dense Panoramax coverage.
 export const START_VIEW = {
   center: [2.3504, 48.855],
-  zoom: 16.5,
+  // Above the z17 picture-dot threshold (#56) so 360° positions show on landing
+  // instead of only sequence lines (#78).
+  zoom: 17.6,
   pitch: 55,
   bearing: 0,
 };
