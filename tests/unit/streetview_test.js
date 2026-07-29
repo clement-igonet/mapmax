@@ -14,6 +14,7 @@ Deno.test('pictureToTarget: default prefers SD for snappy stepping', () => {
     lngLat: [2.325, 48.86],
     imageUrl: 'sd.jpg',
     bearing: 208,
+    panoYaw: 208, // no yawOffset → image centre assumed at the heading
   });
 });
 
@@ -21,11 +22,18 @@ Deno.test('pictureToTarget: preferHd uses the sharper image for entry', () => {
   assertEquals(pictureToTarget(pic, true).imageUrl, 'hd.jpg');
 });
 
+Deno.test('pictureToTarget: sun-compass yawOffset rotates panoYaw, not bearing (#66)', () => {
+  const t = pictureToTarget({ ...pic, yawOffset: 180 });
+  assertEquals(t.bearing, 208); // look/travel direction unchanged
+  assertEquals(t.panoYaw, 28); // image centre really faces heading+180
+});
+
 Deno.test('pictureToTarget: falls back through sd → thumb, heading defaults to 0', () => {
   assertEquals(pictureToTarget({ lon: 1, lat: 2, assets: { thumb: 't.jpg' } }), {
     lngLat: [1, 2],
     imageUrl: 't.jpg',
     bearing: 0,
+    panoYaw: 0,
   });
 });
 

@@ -6,6 +6,7 @@ import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH } from './config.js';
 import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
+import { sunYawOffset } from './sunflip.js';
 
 export { pictureToTarget };
 
@@ -24,8 +25,32 @@ const emit = (pic) => {
   for (const cb of listeners) cb(pic);
 };
 
+// Sun-compass verdicts per sequence (#66): the mount is constant within a
+// sequence, so one conclusive detection covers its shaded pictures too.
+// Conclusive verdicts persist in localStorage; inconclusive ones retry later.
+const yawVerdicts = new Map();
+const YAW_KEY = (k) => `mapmax:yawflip:${k}`;
+async function resolveYawOffset(pic) {
+  if (pic.type !== 'equirectangular') return 0;
+  const key = pic.sequenceId || pic.id;
+  if (yawVerdicts.has(key)) return yawVerdicts.get(key);
+  try {
+    const stored = localStorage.getItem(YAW_KEY(key));
+    if (stored != null) { yawVerdicts.set(key, +stored); return +stored; }
+  } catch { /* private mode */ }
+  const offset = await sunYawOffset(pic);
+  // Only a positive flip detection is conclusive enough to cache persistently;
+  // "no sun found" keeps retrying on later pictures of the sequence.
+  if (offset === 180) {
+    yawVerdicts.set(key, offset);
+    try { localStorage.setItem(YAW_KEY(key), String(offset)); } catch { /* ignore */ }
+  }
+  return offset;
+}
+
 // Enter street view at `pic` (first click) or walk to it (already inside).
-export function enterStreetView(map, pic) {
+export async function enterStreetView(map, pic) {
+  pic.yawOffset = await resolveYawOffset(pic);
   current = pic;
   svMap = map;
 

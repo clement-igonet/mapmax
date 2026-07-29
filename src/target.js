@@ -5,7 +5,16 @@
 export function pictureToTarget(pic, preferHd = false) {
   const a = pic.assets || {};
   const imageUrl = preferHd ? a.hd || a.sd || a.thumb : a.sd || a.hd || a.thumb;
-  return { lngLat: [pic.lon, pic.lat], imageUrl, bearing: pic.heading || 0 };
+  // bearing = travel/look direction; panoYaw = where the image CENTRE really
+  // points — differs by 180° when a backward-mounted camera was detected via
+  // the sun compass (pic.yawOffset, #66).
+  const bearing = pic.heading || 0;
+  return {
+    lngLat: [pic.lon, pic.lat],
+    imageUrl,
+    bearing,
+    panoYaw: (bearing + (pic.yawOffset || 0)) % 360,
+  };
 }
 
 // Blend slider (0..100, %) → photo opacity (1..0). 100% = photo only,
