@@ -92,6 +92,10 @@ export function normalizeItem(f) {
     lon: f.geometry.coordinates[0],
     lat: f.geometry.coordinates[1],
     heading: p['view:azimuth'] ?? 0,
+    // True when the camera wrote a magnetometer heading — then view:azimuth is
+    // the real image-centre direction. Absent, it is track-derived (travel
+    // direction) and the mount may face anywhere → sun-compass check (#66).
+    hasCompass: !!(p.exif && p.exif['Exif.GPSInfo.GPSImgDirection']),
     hfov: io.field_of_view || (type === 'equirectangular' ? 360 : 70),
     type,
     sequenceId: f.collection,

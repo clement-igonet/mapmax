@@ -389,7 +389,9 @@ export class Photosphere {
         // the texture by it to align the photo with the vector world (#52).
         const heading = target && typeof target.bearing === 'number' ? target.bearing : 0;
         this._yawDeg = heading;
-        this._panoYawDeg = heading;
+        // The image centre's world azimuth may differ from the look/travel
+        // heading (backward-mounted cameras, sun-compass corrected — #66).
+        this._panoYawDeg = (target && typeof target.panoYaw === 'number') ? target.panoYaw : heading;
         this._pitchDeg = 0;
         this._recalibrateLookTargetDistance();
         const { lngLat, zoom, eyeHeight, onEnter } = this._options;
@@ -411,7 +413,8 @@ export class Photosphere {
         const fromAnchor = this._options.lngLat;
         const toAnchor = target.lngLat || fromAnchor;
         // Orient the next sphere by its own heading during the crossfade (#52).
-        this._panoYawDeg2 = typeof target.bearing === 'number' ? target.bearing : this._panoYawDeg;
+        this._panoYawDeg2 = typeof target.panoYaw === 'number' ? target.panoYaw
+            : typeof target.bearing === 'number' ? target.bearing : this._panoYawDeg;
         this._loadInto('texture2', target.imageUrl, (err) => {
             if (this._mode !== 'inside') return;
             if (err) { // fall back to an instant swap rather than getting stuck
@@ -470,7 +473,8 @@ export class Photosphere {
         this._options.lngLat = toAnchor;
         this._options.imageUrl = imageUrl;
         // Promote the next pano's heading to current (#52).
-        if (typeof target.bearing === 'number') this._panoYawDeg = target.bearing;
+        if (typeof target.panoYaw === 'number') this._panoYawDeg = target.panoYaw;
+        else if (typeof target.bearing === 'number') this._panoYawDeg = target.bearing;
         this._endTransitionState();
         this._recalibrateLookTargetDistance();
         this._updateCameraWhileInside();

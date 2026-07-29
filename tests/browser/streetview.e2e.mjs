@@ -119,7 +119,7 @@ const nav = await page.evaluate(async () => {
   const deepLinkId = pano.id;
   // #52: the shader rotates the texture by the picture heading (view:azimuth) so
   // the photo aligns with the vector world instead of assuming centre = north.
-  const panoYawApplied = sv._photosphere()._panoYawDeg === (pano.heading || 0);
+  const panoYawApplied = sv._photosphere()._panoYawDeg === ((pano.heading || 0) + (pano.yawOffset || 0)) % 360;
   // #60: inside a photosphere the far tiled building extrusions are replaced by a
   // near-only GeoJSON bubble. The bubble layer exists, and the tiled extrusions
   // stay hidden even when blend re-reveals the other vector layers.
@@ -192,7 +192,7 @@ const nav = await page.evaluate(async () => {
     walkStillInside = sv.isStreetMode() && sv._photosphere().mode === 'inside';
     smoothWalk = sawTransitioning && sawMix > 0.05 && sawMix <= 1.0001;
     walkMixSeen = sawMix;
-    walkPanoYawApplied = sv._photosphere()._panoYawDeg === (walkTarget.heading || 0); // #52
+    walkPanoYawApplied = sv._photosphere()._panoYawDeg === ((walkTarget.heading || 0) + (walkTarget.yawOffset || 0)) % 360; // #52/#66
   }
   // #34: the page shows the current picture's id, and it updates after the walk.
   const picInfoText = document.getElementById('pic-info')?.textContent || '';
@@ -362,6 +362,30 @@ if (nav.skipped) {
     assert.equal(deep.picStillInUrl, nav.deepLinkId, 'deep-link ?pic= lost from the URL after restore (#54)');
     console.log('[e2e] deep-link ?pic= restores street view on reload (#54) OK');
   }
+
+  // #66 sun-compass: pic 0098117e is a REAL backward-mounted GoPro pano
+  // (view:azimuth 208 = travel; sun proves the image centre faces ~28). The sun
+  // compass must detect the 180° flip so the photosphere is not rendered
+  // backward ("walk forward, scene recedes").
+  const FLIPPED_PIC = '0098117e-f71f-458d-93f3-21487146e320';
+  await page.goto(`${base}?pic=${FLIPPED_PIC}`, { waitUntil: 'load', timeout: 60000 });
+  await page.waitForSelector('#map canvas', { timeout: 30000 });
+  const flip = await page.evaluate(async () => {
+    const sv = await import('./src/streetview.js');
+    const waitFor = (pred, ms) => new Promise((res) => {
+      const t0 = performance.now();
+      const tick = () => (pred() || performance.now() - t0 > ms ? res() : requestAnimationFrame(tick));
+      tick();
+    });
+    await waitFor(() => sv.isStreetMode() && sv.currentPicture(), 25000);
+    const pic = sv.currentPicture();
+    return { heading: pic?.heading, yawOffset: pic?.yawOffset, panoYaw: sv._photosphere()?._panoYawDeg, hasCompass: pic?.hasCompass };
+  });
+  // (hasCompass is informational only — GoPro fills GPSImgDirection from the GPS
+  // track, so it proves nothing about the image centre.)
+  assert.equal(flip.yawOffset, 180, `sun compass did not detect the 180° flip (offset ${flip.yawOffset}) (#66)`);
+  assert.equal(Math.round(flip.panoYaw), (flip.heading + 180) % 360, 'flip not applied to the rendered pano yaw (#66)');
+  console.log(`[e2e] sun-compass flip detected & applied (heading ${flip.heading} → panoYaw ${flip.panoYaw}) (#66) OK`);
 }
 
 
