@@ -6,7 +6,7 @@ import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH } from './config.js';
 import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
-import { sunYawVerdict } from './sunflip.js';
+import { consensusVerdict, sunYawVerdict } from './sunflip.js';
 import { getSequence } from './panoramax.js';
 
 export { pictureToTarget };
@@ -32,7 +32,9 @@ const emit = (pic) => {
 // pictures of the sequence — the ride usually crosses sunlight somewhere. A
 // manual override (the flip button, #69) always wins over the auto verdict.
 const yawVerdicts = new Map();
-const YAW_KEY = (k) => `mapmax:yawflip:${k}`;
+// v2 (#71): key bumped so wrong single-vote verdicts persisted by the previous
+// build are discarded client-side.
+const YAW_KEY = (k) => `mapmax:yawflip2:${k}`;
 const OVERRIDE_KEY = (k) => `mapmax:yawoverride:${k}`;
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
@@ -46,24 +48,28 @@ async function resolveYawOffset(pic) {
   const stored = lsGet(YAW_KEY(key));
   if (stored != null) { yawVerdicts.set(key, +stored); return +stored; }
 
-  let verdict = await sunYawVerdict(pic);
+  // Consensus scan (#69/#71): the sun is fixed in the world, clouds are random
+  // per picture — so a real mount direction produces consistent votes across the
+  // ride. Vote with the entered picture plus up to ~10 spread over the sequence;
+  // conclude only on agreement (≥2 same, ≤1 dissent).
+  const votes = [await sunYawVerdict(pic)];
+  let verdict = consensusVerdict(votes);
   if (verdict == null && pic.sequenceId) {
-    // Sequence-wide scan (#69): try up to 8 pictures spread across the ride.
     try {
       const seq = (await getSequence(pic.sequenceId, 120)).filter((p) => p.id !== pic.id && p.type === 'equirectangular');
-      const step = Math.max(1, Math.floor(seq.length / 8));
+      const step = Math.max(1, Math.floor(seq.length / 10));
       for (let i = 0; i < seq.length && verdict == null; i += step) {
-        verdict = await sunYawVerdict(seq[i]);
+        votes.push(await sunYawVerdict(seq[i]));
+        verdict = consensusVerdict(votes);
       }
     } catch { /* offline etc. — stay inconclusive */ }
   }
   if (verdict != null) {
-    // Conclusive either way (sun seen): cache persistently for the sequence.
     yawVerdicts.set(key, verdict);
     lsSet(YAW_KEY(key), String(verdict));
     return verdict;
   }
-  return 0; // inconclusive — uncached so later pictures keep trying
+  return 0; // no consensus — default to metadata orientation, retry later
 }
 
 // Manual 180° flip for the current sequence (#69): overrides the auto verdict,

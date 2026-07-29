@@ -98,14 +98,29 @@ export function sunUFromPixels(data, w, h, opts = {}) {
   return best ? best.u : null;
 }
 
-// The yaw offset (0 or 180) to add to the metadata heading. impliedCentre is
-// where the image centre REALLY points, given the sun at `sunU` and the solar
-// azimuth; if that contradicts the metadata heading by more than 90°, the pano
-// is mounted backward.
+// One picture's VOTE: 180 (backward mount), 0 (orientation confirmed), or null
+// (abstain). impliedCentre is where the image centre really points, given the
+// sun at `sunU` and the solar azimuth. Hysteresis (#71): a genuine backward
+// mount disagrees by ≈180°, a genuine forward mount by ≈0° — anything in the
+// middle band is more likely a misdetected cloud than a signal, so abstain.
 export function decideFlip(headingDeg, solarAzimuthDeg, sunU) {
   const impliedCentre = solarAzimuthDeg - (sunU - 0.5) * 360;
-  const delta = ((impliedCentre - headingDeg + 540) % 360) - 180;
-  return Math.abs(delta) > 90 ? 180 : 0;
+  const delta = Math.abs(((impliedCentre - headingDeg + 540) % 360) - 180);
+  if (delta > 135) return 180;
+  if (delta < 45) return 0;
+  return null;
+}
+
+// Consensus across per-picture votes (#71): the sun is fixed in the world while
+// clouds are random per picture, so a real mount direction produces consistent
+// votes. Conclusive only when ≥2 votes agree and at most one dissents.
+export function consensusVerdict(votes) {
+  const v = votes.filter((x) => x === 0 || x === 180);
+  const flips = v.filter((x) => x === 180).length;
+  const keeps = v.length - flips;
+  if (flips >= 2 && keeps <= 1) return 180;
+  if (keeps >= 2 && flips <= 1) return 0;
+  return null;
 }
 
 // Browser: load `url` into a small canvas and locate the sun. `expectedV` is
@@ -141,11 +156,16 @@ export function detectSunU(url, expectedV = null) {
 // Runs even when EXIF GPSImgDirection exists — some cameras (GoPro Max) fill it
 // from the GPS track, not a magnetometer, so it proves nothing about the image
 // centre; the >90° gate keeps genuinely-correct panos untouched.
+// Below this solar elevation the sun is a diffuse glow — scattered by haze,
+// reflected by glass façades — and every "detection" is junk (#71: an evening
+// ride at ≤8° produced repeated false flip votes). Abstain entirely.
+export const SUN_MIN_ELEVATION_DEG = 12;
+
 export async function sunYawVerdict(pic) {
   if (!pic) return null;
   try {
     const { azimuth, elevation } = solarPosition(pic.datetime, pic.lon, pic.lat);
-    if (elevation < 5) return null;
+    if (elevation < SUN_MIN_ELEVATION_DEG) return null;
     const expectedV = (90 - elevation) / 180; // equirect v of the sun (0 = zenith)
     const u = await detectSunU(pic.assets?.sd || pic.assets?.thumb, expectedV);
     if (u == null) return null;

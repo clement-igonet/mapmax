@@ -1,7 +1,7 @@
 // Unit tests for the sun-compass orientation check (#66).
 import { assert, assertAlmostEquals, assertEquals } from 'jsr:@std/assert@1';
 import { solarPosition } from '../../src/suncalc.js';
-import { decideFlip, sunUFromPixels } from '../../src/sunflip.js';
+import { consensusVerdict, decideFlip, sunUFromPixels } from '../../src/sunflip.js';
 
 Deno.test('solarPosition: real capture (Paris, 2025-03-20 09:10 UTC) — the #66 case', () => {
   const { azimuth, elevation } = solarPosition('2025-03-20T09:10:31+00:00', 2.313577, 48.841299);
@@ -27,11 +27,29 @@ Deno.test('decideFlip: the real backward-mount case flips, the aligned case does
   assertEquals(decideFlip(197, 130, 0.5 + ((130 - 197) / 360)), 0);
 });
 
-Deno.test('decideFlip: only gross (>90°) disagreement flips', () => {
-  // implied centre 60° off → keep metadata (could be detection noise)
-  assertEquals(decideFlip(0, 60, 0.5), 0);
-  // implied centre 120° off → flip
-  assertEquals(decideFlip(0, 120, 0.5), 180);
+Deno.test('decideFlip: hysteresis — mid-band disagreement abstains (#71)', () => {
+  // <45° off → orientation confirmed
+  assertEquals(decideFlip(0, 30, 0.5), 0);
+  // 60° / 120° off → ambiguous (misdetected cloud territory) → abstain
+  assertEquals(decideFlip(0, 60, 0.5), null);
+  assertEquals(decideFlip(0, 120, 0.5), null);
+  // >135° off → backward mount
+  assertEquals(decideFlip(0, 150, 0.5), 180);
+  // the real cloud false-positive from seq 25a620 (az 94, solar 113, u 0.05):
+  // delta ≈ 181 — a single vote CAN still be wrong, which is why consensus exists
+  assertEquals(decideFlip(94, 113, 0.05), 180);
+});
+
+Deno.test('consensusVerdict: needs agreement, tolerates one dissent (#71)', () => {
+  assertEquals(consensusVerdict([180]), null); // one vote is not enough
+  assertEquals(consensusVerdict([180, 180]), 180);
+  assertEquals(consensusVerdict([0, 0]), 0);
+  assertEquals(consensusVerdict([180, 0]), null); // split
+  assertEquals(consensusVerdict([180, 0, 180]), 180); // 2-1 → flip
+  assertEquals(consensusVerdict([0, 180, 0]), 0); // 2-1 → keep
+  assertEquals(consensusVerdict([180, 0, 180, 0]), null); // 2-2 → no consensus
+  assertEquals(consensusVerdict([null, 180, null, 180]), 180); // abstentions ignored
+  assertEquals(consensusVerdict([null, null]), null);
 });
 
 // Synthetic 64x32 equirect: blue sky above y=20, grey street below; optional
