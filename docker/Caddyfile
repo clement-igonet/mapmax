@@ -4,12 +4,15 @@
 # www/sandbox/staging.mapmax.confinia.io and forwards everything to
 # 127.0.0.1:8087 — which is THIS server (the `edge` service in
 # docker-compose.yml publishes it). Host-based routing happens here, inside
-# mapmax's own stack, so environments can be split later without touching the
+# mapmax's own stack, so environments can be split without touching the
 # platform config:
 #
-#   www.mapmax.confinia.io      → web  (production)
-#   sandbox.mapmax.confinia.io  → web  (point at a web-sandbox service later)
-#   staging.mapmax.confinia.io  → web  (point at a web-staging service later)
+#   www.mapmax.confinia.io      → web          (production, public)
+#   sandbox.mapmax.confinia.io  → web-sandbox  (ISOLATED, access-gated — the
+#                                 playground for paid/advanced features; will be
+#                                 entitlement-gated via polar.sh, basic-auth in
+#                                 the meantime)
+#   staging.mapmax.confinia.io  → web          (point at a web-staging later)
 #   anything else (dev/e2e)     → web
 {
 	auto_https off
@@ -23,7 +26,12 @@
 
 	@sandbox host sandbox.mapmax.confinia.io
 	handle @sandbox {
-		reverse_proxy web:80
+		# Interim gate until the polar.sh entitlement flow lands (license-key
+		# validation against the dedicated mapmax org on sandbox.polar.sh).
+		basic_auth {
+			sandbox $2a$14$iH7M7Mve.9Qv8mfk5c.lp.wRmGj.9wX9y34VJyLGFc15ENhZmt9ei
+		}
+		reverse_proxy web-sandbox:80
 	}
 
 	@staging host staging.mapmax.confinia.io

@@ -53,3 +53,15 @@ export const PHOTOSPHERE = {
   minPitch: -85,
   maxPitch: 85,
 };
+
+// Polar.sh entitlements (sandbox environment). The sandbox host is gated at the
+// edge (basic-auth interim); once the dedicated `mapmax` organization exists on
+// sandbox.polar.sh, the gate switches to license-key validation against the
+// customer-portal API (front-end only — no backend of ours, R3). `enabled`
+// flips on when the org + product are created.
+export const POLAR = {
+  enabled: false,
+  server: 'sandbox', // sandbox.polar.sh / sandbox-api.polar.sh
+  organization: 'mapmax', // dedicated org under the Confinia Polar account
+  checkoutUrl: null, // Polar product checkout link, once created
+};
