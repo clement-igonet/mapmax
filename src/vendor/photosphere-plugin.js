@@ -43,6 +43,7 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform float uMix;            // 0 = current pano only, 1 = next pano only
     uniform float uPanoYaw;        // world azimuth (rad) the current image centre faces (#52)
     uniform float uPanoYaw2;       // ...and the next image's, during a walk
+    uniform vec2 uWalkDir;         // unit horizontal travel direction (east, north) during a walk (#64)
     uniform float uEyeHeight;      // eye height above the ground (m)
     uniform int uArrowCount;
     uniform vec2 uArrows[${MAX_ARROWS}]; // ground positions (east, north) m from the eye
@@ -92,17 +93,26 @@ const FRAGMENT_SHADER_SOURCE = `
 
         vec3 viewDir = normalize(forward + right * (vNdc.x * tanHalfFovX) + up * (vNdc.y * tanHalfFovY));
 
-        // Base colour: the panorama sphere. While walking (uMix > 0) a second
-        // sphere for the next panorama is cross-faded in as the eye dollies from
-        // one anchor to the other — a smooth translation, not a teleport (#5b).
-        vec4 s1 = sampleSphere(viewDir, uSphereCenterOffset, uPanorama, uPanoYaw);
+        // Base colour: the panorama sphere. While walking (uMix > 0) the next
+        // panorama cross-fades in. Both panos are sampled DIRECTION-ONLY during
+        // the walk — ray-casting finite spheres from a moving eye shows the
+        // destination sphere's near surface, i.e. its REAR view, which made
+        // walking forward look like moving backward (#64). The forward cue is a
+        // directional zoom instead: the current pano magnifies toward the travel
+        // direction while the next starts slightly wide and settles to 1:1
+        // (Street-View-style); the map camera still dollies for vector parallax.
         vec3 rgb;
         float a;
         if (uMix > 0.0) {
-            vec4 s2 = sampleSphere(viewDir, uSphereCenterOffset2, uPanorama2, uPanoYaw2);
+            vec3 wd = vec3(uWalkDir.x, uWalkDir.y, 0.0);
+            vec3 d1 = normalize(viewDir + wd * (0.85 * uMix));         // zoom in, growing
+            vec3 d2 = normalize(viewDir - wd * (0.30 * (1.0 - uMix))); // settle from wide
+            vec4 s1 = sampleSphere(d1, vec3(0.0), uPanorama, uPanoYaw);
+            vec4 s2 = sampleSphere(d2, vec3(0.0), uPanorama2, uPanoYaw2);
             rgb = mix(s1.rgb, s2.rgb, uMix);
             a = mix(s1.a, s2.a, uMix) * uAlpha;
         } else {
+            vec4 s1 = sampleSphere(viewDir, uSphereCenterOffset, uPanorama, uPanoYaw);
             rgb = s1.rgb;
             a = s1.a * uAlpha;
         }
@@ -207,6 +217,7 @@ export class Photosphere {
         this._transitioning = false;
         this._panoYawDeg = 0; //  world azimuth the current image centre faces (#52)
         this._panoYawDeg2 = 0; // ...the next image's, during a walk
+        this._walkDir = [0, 0]; // unit (east, north) travel direction during a walk (#64)
         this._gl = null;
         this._layerCtx = null;
 
@@ -411,13 +422,22 @@ export class Photosphere {
         });
     }
 
-    // Animate the eye from `fromAnchor` to `toAnchor`: sphere 1 (current) stays
-    // at fromAnchor, sphere 2 (next) at toAnchor, both rendered from the moving
-    // eye so you see real approach parallax, cross-faded 0→1 over the walk.
+    // Animate the walk from `fromAnchor` to `toAnchor`. The panos themselves are
+    // sampled direction-only with a directional zoom toward the travel direction
+    // (see the shader, #64) — finite-sphere ray-casting from the moving eye showed
+    // the destination's REAR view and read as backward motion. The map camera
+    // still dollies so the vector layers give true forward parallax.
     _runTransition(fromAnchor, toAnchor, target) {
         this._transitioning = true;
         const fromM = MercatorCoordinate.fromLngLat(fromAnchor);
         const toM = MercatorCoordinate.fromLngLat(toAnchor);
+        // Unit (east, north) travel direction for the shader zoom (#64).
+        const dE = toM.x - fromM.x;
+        const dN = -(toM.y - fromM.y); // mercator y grows southward
+        const dLen = Math.hypot(dE, dN) || 1;
+        this._walkDir = [dE / dLen, dN / dLen];
+        this._sphereCenterOffset = [0, 0, 0];
+        this._sphereCenterOffset2 = [0, 0, 0];
         const durationMs = this._options.walkMs;
         const startTime = performance.now();
         const step = (now) => {
@@ -428,10 +448,6 @@ export class Photosphere {
                 fromAnchor[0] + (toAnchor[0] - fromAnchor[0]) * eased,
                 fromAnchor[1] + (toAnchor[1] - fromAnchor[1]) * eased,
             ];
-            const eyeM = MercatorCoordinate.fromLngLat(eye);
-            const m = eyeM.meterInMercatorCoordinateUnits();
-            this._sphereCenterOffset = [(fromM.x - eyeM.x) / m, -(fromM.y - eyeM.y) / m, 0];
-            this._sphereCenterOffset2 = [(toM.x - eyeM.x) / m, -(toM.y - eyeM.y) / m, 0];
             this._mix = eased;
             this._positionEyeAt(eye);
             this._map.triggerRepaint();
@@ -465,6 +481,7 @@ export class Photosphere {
     _endTransitionState() {
         this._sphereCenterOffset = [0, 0, 0];
         this._sphereCenterOffset2 = [0, 0, 0];
+        this._walkDir = [0, 0];
         this._mix = 0;
         this._transitioning = false;
     }
@@ -555,7 +572,7 @@ export class Photosphere {
 
                 this.aPosition = gl.getAttribLocation(this.program, 'aPosition');
                 this.uniforms = {};
-                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uSphereCenterOffset2', 'uPanorama2', 'uMix', 'uPanoYaw', 'uPanoYaw2', 'uEyeHeight', 'uArrowCount', 'uArrows', 'uPoiCount', 'uPois']) {
+                for (const name of ['uYaw', 'uPitch', 'uFovY', 'uAspect', 'uAlpha', 'uSphereCenterOffset', 'uSphereRadius', 'uPanorama', 'uSphereCenterOffset2', 'uPanorama2', 'uMix', 'uPanoYaw', 'uPanoYaw2', 'uWalkDir', 'uEyeHeight', 'uArrowCount', 'uArrows', 'uPoiCount', 'uPois']) {
                     this.uniforms[name] = gl.getUniformLocation(this.program, name);
                 }
 
@@ -618,6 +635,7 @@ export class Photosphere {
                 gl.uniform1f(this.uniforms.uMix, self._mix);
                 gl.uniform1f(this.uniforms.uPanoYaw, self._panoYawDeg * Math.PI / 180);
                 gl.uniform1f(this.uniforms.uPanoYaw2, self._panoYawDeg2 * Math.PI / 180);
+                gl.uniform2f(this.uniforms.uWalkDir, self._walkDir[0], self._walkDir[1]);
 
                 // Ground navigation arrows (mapmax #26): positions on the floor,
                 // at a fixed distance toward each target bearing.
