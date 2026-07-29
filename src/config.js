@@ -31,7 +31,10 @@ export const MAP_MIN_PITCH_CAP = 20;
 // viewer. MapLibre has no per-feature distance expression, so the far tiled
 // skyline is replaced by a GeoJSON "bubble" of just the nearby buildings — the
 // only ones that line up with the photo anyway. Customizable.
-export const BUILDINGS_RADIUS_M = 50;
+// 150 m: covers the visible street canyon (a Haussmann block face runs 60–150 m)
+// while still excluding the horizon skyline — at 50 m only one or two buildings
+// qualified and every neighbour looked like it had "disappeared" at blend.
+export const BUILDINGS_RADIUS_M = 150;
 
 // In street mode, only show/load Panoramax pictures within this radius (meters)
 // around the current photosphere — keeps the scene light and POIs nearby (#27).
