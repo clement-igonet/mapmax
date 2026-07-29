@@ -1,0 +1,38 @@
+# MapMax edge — the single entry point the platform reverse-proxies to.
+#
+# The (owner-managed) platform Caddyfile terminates TLS for
+# www/sandbox/staging.mapmax.confinia.io and forwards everything to
+# 127.0.0.1:8087 — which is THIS server (the `edge` service in
+# docker-compose.yml publishes it). Host-based routing happens here, inside
+# mapmax's own stack, so environments can be split later without touching the
+# platform config:
+#
+#   www.mapmax.confinia.io      → web  (production)
+#   sandbox.mapmax.confinia.io  → web  (point at a web-sandbox service later)
+#   staging.mapmax.confinia.io  → web  (point at a web-staging service later)
+#   anything else (dev/e2e)     → web
+{
+	auto_https off
+}
+
+:80 {
+	@www host www.mapmax.confinia.io mapmax.confinia.io
+	handle @www {
+		reverse_proxy web:80
+	}
+
+	@sandbox host sandbox.mapmax.confinia.io
+	handle @sandbox {
+		reverse_proxy web:80
+	}
+
+	@staging host staging.mapmax.confinia.io
+	handle @staging {
+		reverse_proxy web:80
+	}
+
+	# Default (localhost:8087 during dev, container-network access).
+	handle {
+		reverse_proxy web:80
+	}
+}
