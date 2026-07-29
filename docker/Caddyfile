@@ -26,11 +26,11 @@
 
 	@sandbox host sandbox.mapmax.confinia.io
 	handle @sandbox {
-		# Interim gate until the polar.sh entitlement flow lands (license-key
-		# validation against the dedicated mapmax org on sandbox.polar.sh).
-		basic_auth {
-			sandbox $2a$14$iH7M7Mve.9Qv8mfk5c.lp.wRmGj.9wX9y34VJyLGFc15ENhZmt9ei
-		}
+		# Access is gated in the app by a Polar license key (#76): the sandbox
+		# build shows a paste-your-key screen validated against Polar's public
+		# customer-portal API. (Soft, feature-demo gate — a static site can't
+		# hard-gate front-end-only; add forward_auth here if a hard gate is
+		# needed later.)
 		reverse_proxy web-sandbox:80
 	}
 

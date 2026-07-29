@@ -36,7 +36,8 @@ Deno.test('docker/Caddyfile routes the confinia.io hosts to the web service', as
   assert(cf.includes('auto_https off'), 'TLS is terminated by the platform proxy — edge must stay plain HTTP');
   // Sandbox isolation: its own service + an access gate at the edge
   assert(cf.includes('reverse_proxy web-sandbox:80'), 'sandbox must route to the isolated web-sandbox service');
-  assert(cf.includes('basic_auth'), 'sandbox must be access-gated (basic-auth interim, polar.sh later)');
+  // Access is now gated in the app by the Polar license key (#76), not basic-auth.
+  assert(!cf.includes('basic_auth'), 'edge basic_auth retired in favour of the app license gate (#76)');
 });
 
 Deno.test('docker-compose.yml isolates the sandbox web service', async () => {

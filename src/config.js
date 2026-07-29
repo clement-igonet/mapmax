@@ -9,7 +9,9 @@ export const PANORAMAX_API = 'https://api.panoramax.xyz/api';
 // Initial view: central Paris, an area with dense Panoramax coverage.
 export const START_VIEW = {
   center: [2.3504, 48.855],
-  zoom: 16.5,
+  // Above the z17 picture-dot threshold (#56) so 360° positions show on landing
+  // instead of only sequence lines (#78).
+  zoom: 17.6,
   pitch: 55,
   bearing: 0,
 };
@@ -54,14 +56,20 @@ export const PHOTOSPHERE = {
   maxPitch: 85,
 };
 
-// Polar.sh entitlements (sandbox environment). The sandbox host is gated at the
-// edge (basic-auth interim); once the dedicated `mapmax` organization exists on
-// sandbox.polar.sh, the gate switches to license-key validation against the
-// customer-portal API (front-end only — no backend of ours, R3). `enabled`
-// flips on when the org + product are created.
+// Polar.sh entitlements (#76). The sandbox host gates advanced access behind a
+// license key, validated in the browser against Polar's PUBLIC customer-portal
+// endpoint (no backend of ours, R3; organizationId is public and safe to ship).
+// This is a soft, feature-demo gate on a static site — it showcases the
+// purchase→unlock flow, it is not a cryptographic access boundary.
 export const POLAR = {
-  enabled: false,
+  enabled: true,
   server: 'sandbox', // sandbox.polar.sh / sandbox-api.polar.sh
-  organization: 'mapmax', // dedicated org under the Confinia Polar account
-  checkoutUrl: null, // Polar product checkout link, once created
+  apiBase: 'https://sandbox-api.polar.sh',
+  organization: 'mapmax',
+  organizationId: '654a60f6-322b-4fa7-970a-930be9fe6522',
+  productName: 'MapMax Sandbox Access',
+  // Checkout link (redirects to the hosted Polar checkout).
+  checkoutUrl: 'https://sandbox-api.polar.sh/v1/checkout-links/polar_cl_B1Xl8ZvjuLCrM0Uv0WdU4DLFxbISPrxLkwYtX4OrKZ5/redirect',
+  // Host that requires a license (dev/e2e: add ?sandbox=1 to any host).
+  gatedHost: 'sandbox.mapmax.confinia.io',
 };
