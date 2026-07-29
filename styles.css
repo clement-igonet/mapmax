@@ -99,6 +99,25 @@ body {
   background: rgba(50, 50, 60, 0.95);
 }
 
+/* Manual 180° flip for mis-oriented sequences (#69) — below the exit button. */
+#flip-pano {
+  position: absolute;
+  top: 56px;
+  right: 50px;
+  z-index: 20;
+  background: rgba(20, 20, 24, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#flip-pano:hover {
+  background: rgba(50, 50, 60, 0.95);
+}
+
 #minimap {
   position: absolute;
   bottom: 24px;

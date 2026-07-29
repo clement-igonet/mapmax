@@ -386,6 +386,25 @@ if (nav.skipped) {
   assert.equal(flip.yawOffset, 180, `sun compass did not detect the 180° flip (offset ${flip.yawOffset}) (#66)`);
   assert.equal(Math.round(flip.panoYaw), (flip.heading + 180) % 360, 'flip not applied to the rendered pano yaw (#66)');
   console.log(`[e2e] sun-compass flip detected & applied (heading ${flip.heading} → panoYaw ${flip.panoYaw}) (#66) OK`);
+
+  // #69 manual flip button: overrides the auto verdict per sequence (persisted)
+  // and re-renders immediately. Toggling twice returns to the auto orientation.
+  const manual = await page.evaluate(async () => {
+    const sv = await import('./src/streetview.js');
+    const btn = document.getElementById('flip-pano');
+    const yaw0 = sv._photosphere()._panoYawDeg;
+    btn.click();
+    const yaw1 = sv._photosphere()._panoYawDeg;
+    const overridden = Object.keys(localStorage).some((k) => k.startsWith('mapmax:yawoverride:'));
+    btn.click();
+    const yaw2 = sv._photosphere()._panoYawDeg;
+    return { visible: !btn.hidden, delta1: Math.round(Math.abs(yaw1 - yaw0)) % 360, backTo0: Math.round(yaw2) === Math.round(yaw0), overridden };
+  });
+  assert.ok(manual.visible, 'flip button not visible in street mode (#69)');
+  assert.equal(manual.delta1, 180, 'flip button did not rotate the pano 180° (#69)');
+  assert.ok(manual.backTo0, 'second flip did not return to the original orientation (#69)');
+  assert.ok(manual.overridden, 'flip override not persisted (#69)');
+  console.log('[e2e] manual 180° flip button works & persists (#69) OK');
 }
 
 

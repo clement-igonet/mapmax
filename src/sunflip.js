@@ -136,21 +136,26 @@ export function detectSunU(url, expectedV = null) {
   });
 }
 
-// Full check for a normalized picture: 0 (trust metadata) or 180 (flipped).
+// Verdict for one picture: 180 (flipped), 0 (sun found, orientation confirmed),
+// or null (inconclusive — sun below 5°, not visible, or load failure).
 // Runs even when EXIF GPSImgDirection exists — some cameras (GoPro Max) fill it
 // from the GPS track, not a magnetometer, so it proves nothing about the image
-// centre; the >90° gate keeps genuinely-correct panos untouched. Needs the sun
-// ≥5° up; inconclusive → 0.
-export async function sunYawOffset(pic) {
-  if (!pic) return 0;
+// centre; the >90° gate keeps genuinely-correct panos untouched.
+export async function sunYawVerdict(pic) {
+  if (!pic) return null;
   try {
     const { azimuth, elevation } = solarPosition(pic.datetime, pic.lon, pic.lat);
-    if (elevation < 5) return 0;
+    if (elevation < 5) return null;
     const expectedV = (90 - elevation) / 180; // equirect v of the sun (0 = zenith)
     const u = await detectSunU(pic.assets?.sd || pic.assets?.thumb, expectedV);
-    if (u == null) return 0;
+    if (u == null) return null;
     return decideFlip(pic.heading || 0, azimuth, u);
   } catch {
-    return 0;
+    return null;
   }
+}
+
+// Back-compat wrapper: inconclusive → 0.
+export async function sunYawOffset(pic) {
+  return (await sunYawVerdict(pic)) ?? 0;
 }
