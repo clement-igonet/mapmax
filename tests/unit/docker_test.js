@@ -13,13 +13,27 @@ Deno.test('Dockerfile builds a static server image with the app files', async ()
   }
 });
 
-Deno.test('docker-compose.yml defines web + containerized-Chromium e2e services', async () => {
+Deno.test('docker-compose.yml defines edge + web + containerized-Chromium e2e services', async () => {
   const dc = await read('docker-compose.yml');
   assert(dc.includes('services:'), 'services missing');
   assert(dc.includes('web:'), 'web service missing');
   assert(dc.includes('e2e:'), 'e2e service missing');
   assert(dc.includes('build: tests/browser'), 'e2e must build the Chromium test image');
   assert(dc.includes('TARGET_URL'), 'e2e must accept TARGET_URL override');
+  // Public exposure: a Caddy edge owns 127.0.0.1:8087 (the platform proxy target)
+  assert(dc.includes('edge:'), 'edge service missing');
+  assert(dc.includes('caddy'), 'edge must run Caddy');
+  assert(dc.includes('127.0.0.1:${WEB_PORT:-8087}:80'), 'edge must bind 127.0.0.1:8087 for the platform reverse-proxy');
+  assert(dc.includes('docker/Caddyfile'), 'edge must mount the mapmax Caddyfile');
+});
+
+Deno.test('docker/Caddyfile routes the confinia.io hosts to the web service', async () => {
+  const cf = await read('docker/Caddyfile');
+  for (const host of ['www.mapmax.confinia.io', 'sandbox.mapmax.confinia.io', 'staging.mapmax.confinia.io']) {
+    assert(cf.includes(host), `${host} missing from Caddyfile`);
+  }
+  assert(cf.includes('reverse_proxy web:80'), 'must proxy to the web service');
+  assert(cf.includes('auto_https off'), 'TLS is terminated by the platform proxy — edge must stay plain HTTP');
 });
 
 Deno.test('browser e2e image runs Chromium (playwright) against the web service', async () => {
