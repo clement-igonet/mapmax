@@ -9,7 +9,6 @@ import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
-import { setupNearBuildings } from './nearbuildings.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 import { setupLicenseGate } from './licensegate.js';
@@ -137,26 +136,11 @@ map.on('load', async () => {
   }
 });
 
-// #60: while inside a photosphere, render only the buildings near the viewer (the
-// far tiled skyline never lines up with the photo). Reference point = the sphere
-// anchor in street mode, else the map centre.
-const refPoint = () => {
-  const ps = _photosphere();
-  if (ps && ps.mode !== 'outside' && ps.lngLat) return ps.lngLat;
-  const c = map.getCenter();
-  return [c.lng, c.lat];
-};
-let updateNearBuildings = null;
-
 map.on('style.load', () => {
   ensureBuildings3D();
   addPanoramaxLayers(map);
-  if (!updateNearBuildings) updateNearBuildings = setupNearBuildings(map, isStreetMode, refPoint);
   status('Zoom in and click a Panoramax picture dot.');
 });
-// Re-assert the near-building bubble when blend re-reveals tiled layers / on
-// entering/leaving a photosphere.
-onPictureChanged(() => updateNearBuildings?.());
 
 // Sprite icons referenced by the style but absent from its sprite sheet would
 // log a warning per POI type; register a transparent placeholder. MapLibre main
@@ -223,7 +207,6 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) =>
 const blendSlider = document.getElementById('blend');
 blendSlider.addEventListener('input', () => {
   setBlend(sliderToBlend(blendSlider.value));
-  updateNearBuildings?.(); // blend re-reveals tiled layers — re-hide the far skyline (#60)
 });
 
 const exitBtn = document.getElementById('exit-street');
@@ -259,14 +242,16 @@ map.on('error', (e) => {
 
 // The Liberty style ships a `building-3d` fill-extrusion layer; if the style
 // ever changes, add our own extrusion from the OSM `building` source layer.
-// Buildings are held to L3+ (zoom ≥ 16, #80): below that they'd be tiny far
-// clutter — the distance budget wants near buildings at high zoom only.
-const BUILDINGS_MIN_ZOOM = 16;
+// Buildings are held to zoom ≥ 18 (#82): a layer's minzoom is a global map-zoom
+// gate, so buildings show only once you're zoomed right in — near, at street
+// scale. Below z18 they'd be far clutter. No per-distance culling — the zoom
+// gate alone keeps them near (the distance budget, kept simple).
+const BUILDINGS_MIN_ZOOM = 18;
 function ensureBuildings3D() {
   const style = map.getStyle();
-  const existing = style.layers.filter((l) => l.type === 'fill-extrusion' && l.id !== 'mapmax-buildings-near');
+  const existing = style.layers.filter((l) => l.type === 'fill-extrusion');
   if (existing.length) {
-    // Hold the style's own extrusions (Liberty `building-3d`) to z16+.
+    // Hold the style's own extrusions (Liberty `building-3d`) to z18+.
     for (const l of existing) {
       try { map.setLayerZoomRange(l.id, BUILDINGS_MIN_ZOOM, 24); } catch { /* ignore */ }
     }

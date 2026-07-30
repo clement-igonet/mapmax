@@ -13,19 +13,21 @@ zoom levels (512‑px tiles). Values below are the source of truth for the code 
 | **L0 — World / Region** | `0–9`   | low‑detail ground | — | — | — | flat overview |
 | **L1 — City**           | `10–12` | streets, water | **on** (thin, coverage overview) | — | — | dots would be an unusable swarm here |
 | **L2 — District**       | `13–15` | full streets, labels | on (thicker) | — | — | no buildings yet — at this scale they'd be far clutter (#80) |
-| **L3 — Street**         | `16–17` | full | on | **on** from `z17` (clickable) | **on** from `z16` (extrusions) | usable scale: buildings + clickable dots appear; tilt capped so they don't march to the horizon (#41, #56, #80) |
-| **L4 — Immersive**      | `18+` / on dot click | suspended | (n/a) | neighbours ≤ `50 m`, as ground arrows/dots | **near-only bubble ≤ `150 m`** (far skyline dropped) | inside the 360° photosphere; tiled layers suspended, near buildings re-drawn from GeoJSON (#27, #60) |
+| **L3 — Street**         | `16–17` | full | on | **on** from `z17` (clickable) | — | clickable dots appear; tilt capped so they don't march to the horizon (#41, #56) |
+| **L4 — Immersive**      | `18+` / on dot click | suspended | (n/a) | neighbours ≤ `50 m`, as ground arrows/dots | **on** from `z18` (extrusions) | usable near scale: 3D buildings appear; inside the 360° photosphere tiled layers suspended, OSM resumes at blend (#27, #82) |
 
-Default landing view: `z17.6`, pitch `55°` ([`START_VIEW`](src/config.js)) — above the
-z17 dot threshold so 360° positions and buildings show immediately (#78).
+Default landing view: `z18.5`, pitch `55°` ([`START_VIEW`](src/config.js)) — strictly
+above both the z17 dot threshold and the z18 building gate
+(`BUILDINGS_MIN_ZOOM`), so 360° positions and 3D buildings both show immediately
+(#78, #82).
 
-**Distance budget** (the governing rule, #80): show vector tiles + building
-extrusions **close to the camera (0–200 m) at high zoom, and as little as
-possible beyond**. High zoom ⇒ near, high-detail; far content is only ever served
-from lower zoom levels (coarse), never loaded at full detail. Concretely:
-buildings appear at `z16+` (L3); inside a photosphere (L4) only the ≤ 150 m
-bubble is drawn; and the map-mode tilt cap (#41) keeps the far plane within
-~160 m so distant tiles are never pulled at street zoom.
+**Distance budget** (the governing rule, #80/#82): show vector tiles + building
+extrusions **close to the camera at high zoom, and as little as possible
+beyond** — but kept simple, with no per-feature distance culling. A layer's
+`minzoom` is a global map-zoom gate, so gating buildings to `z18+` means they
+only appear once you're zoomed right in (near, street scale); at lower zoom the
+far city renders without them. The map-mode tilt cap (#41) additionally keeps the
+far plane within ~160 m so distant tiles are never pulled at street zoom.
 
 ## Triggers & knobs
 
@@ -34,8 +36,7 @@ bubble is drawn; and the map-mode tilt cap (#41) keeps the far plane within
 | Sequence lines | source `minzoom 0`, line-width ramps `z10→16` | `panoramax.js` (`panoramax-sequences`) |
 | Picture dots | layer `minzoom 17`, radius ramps `z17→22` | `panoramax.js` (`panoramax-pictures`) — **#56** |
 | Panoramax source | `minzoom 0`, `maxzoom 15` (overzoomed above) | `panoramax.js` (`SOURCE_ID`) |
-| 3D buildings | `minzoom 16` (L3+; Liberty `building-3d` clamped via `setLayerZoomRange`, or the fallback `mapmax-buildings-3d`) | `main.js` (`BUILDINGS_MIN_ZOOM`, #80) |
-| Near-building bubble | inside a photosphere: only buildings ≤ `BUILDINGS_RADIUS_M = 150 m`, re-drawn from GeoJSON; far tiled skyline hidden | `nearbuildings.js` (#60) |
+| 3D buildings | `minzoom 18` (L4; Liberty `building-3d` clamped via `setLayerZoomRange`, or the fallback `mapmax-buildings-3d`) | `main.js` (`BUILDINGS_MIN_ZOOM`, #82) |
 | Map clutter cap | pitch capped so the top of the viewport stays within `MAP_VISIBLE_RADIUS_M = 160 m`; tilt unlocks as you zoom in; never below `MAP_MIN_PITCH_CAP = 20°` | `mapclutter.js` (#41) |
 | Enter photosphere | click a picture dot (equirectangular only) | `main.js` → `streetview.js` |
 | Street-mode POIs | neighbours within `STREET_POI_RADIUS_M = 50 m`, shader ground arrows/dots | `navigation.js`, photosphere plugin (#26/#39) |
@@ -55,6 +56,9 @@ bubble is drawn; and the map-mode tilt cap (#41) keeps the far plane within
 - **Immersive mode is self-contained.** Inside a photosphere the map tiles are
   suspended and only nearby (≤ 50 m) neighbours load, so walking a sequence never
   pulls city-wide data.
+- **Buildings are gated by zoom, not distance (#82).** No per-feature distance
+  culling — the `z18` `minzoom` alone keeps buildings near, which is simpler and
+  cheaper than the previous GeoJSON near-building bubble (removed).
 
 ## Related issues
 
