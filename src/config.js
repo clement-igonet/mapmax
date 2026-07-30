@@ -9,9 +9,10 @@ export const PANORAMAX_API = 'https://api.panoramax.xyz/api';
 // Initial view: central Paris, an area with dense Panoramax coverage.
 export const START_VIEW = {
   center: [2.3504, 48.855],
-  // Above the z17 picture-dot threshold (#56) so 360° positions show on landing
-  // instead of only sequence lines (#78).
-  zoom: 17.6,
+  // z18.5: above the z17 picture-dot threshold (#56, #78) AND above the z18
+  // building threshold (BUILDINGS_MIN_ZOOM, #82) so 360° dots and 3D buildings
+  // both show on landing (landing must sit strictly above the building gate).
+  zoom: 18.5,
   pitch: 55,
   bearing: 0,
 };
@@ -28,15 +29,6 @@ export const STREET_MAX_PITCH = 179;
 // below MAP_MIN_PITCH_CAP (keep a little 3D even when zoomed out).
 export const MAP_VISIBLE_RADIUS_M = 160;
 export const MAP_MIN_PITCH_CAP = 20;
-
-// Street mode (#60): only render 3D building extrusions within this radius of the
-// viewer. MapLibre has no per-feature distance expression, so the far tiled
-// skyline is replaced by a GeoJSON "bubble" of just the nearby buildings — the
-// only ones that line up with the photo anyway. Customizable.
-// 150 m: covers the visible street canyon (a Haussmann block face runs 60–150 m)
-// while still excluding the horizon skyline — at 50 m only one or two buildings
-// qualified and every neighbour looked like it had "disappeared" at blend.
-export const BUILDINGS_RADIUS_M = 150;
 
 // In street mode, only show/load Panoramax pictures within this radius (meters)
 // around the current photosphere — keeps the scene light and POIs nearby (#27).
