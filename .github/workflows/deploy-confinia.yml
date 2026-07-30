@@ -1,0 +1,43 @@
+# Deploy MapMax to confinia (www/sandbox/staging.mapmax.confinia.io).
+#
+# Runs on a SELF-HOSTED runner on the OVH VM (label `confinia`), so the deploy
+# happens where the stack lives — rootless podman, no inbound SSH, no secrets in
+# GitHub. On every push to main that touches site sources, it runs the unit +
+# e2e gate IN THIS ENV and, only if green, promotes the tree to ~/mapmax and
+# rebuilds the containers. GitHub Pages deploys separately (deploy-from-branch).
+name: Deploy to confinia
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'assets/**'
+      - 'vendor/**'
+      - 'index.html'
+      - 'styles.css'
+      - 'Dockerfile'
+      - 'docker/**'
+      - 'docker-compose.yml'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/deploy-confinia.yml'
+
+# Never run two deploys at once; queue instead of cancel so an in-flight deploy
+# always finishes cleanly.
+concurrency:
+  group: confinia-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, confinia]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Unit + e2e gate (isolated compose project)
+        run: bash scripts/ci-test.sh
+
+      - name: Promote to confinia + health check
+        run: bash scripts/deploy-confinia.sh
