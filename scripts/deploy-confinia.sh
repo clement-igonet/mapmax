@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SRC="$PWD"
-DEST="${DEPLOY_DIR:-$HOME/mapmax}"
+DEST="${DEPLOY_DIR:-$HOME/projects/mapmax}"
 PORT="${WEB_PORT:-8087}"
 
 echo "::group::sync $SRC -> $DEST"
@@ -27,8 +27,8 @@ cd "$DEST"
 # COPY layers bust on changed file checksums; --force-recreate guarantees the
 # running containers are replaced by the freshly built images (a plain
 # `up --build` can rebuild the image yet keep the old container).
-WEB_PORT="$PORT" podman compose build web web-sandbox
-WEB_PORT="$PORT" podman compose up -d --force-recreate edge web web-sandbox
+WEB_PORT="$PORT" podman-compose build web web-sandbox
+WEB_PORT="$PORT" podman-compose up -d --force-recreate edge web web-sandbox
 echo "::endgroup::"
 
 echo "::group::health check (served == disk)"
