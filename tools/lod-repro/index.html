@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MapLibre repro — looking around at a fixed position reloads tiles (maplibre-gl-js#8057)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- MapLibre 6.0.0 is ESM-only (no UMD bundle), so load it as a module. Same
+     version MapMax vendors. -->
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.0.0/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; font-family: ui-monospace, Menlo, monospace; }
+  #map { position: absolute; inset: 0 0 auto 0; height: 42%; }
+  #out { position: absolute; inset: 42% 0 0 0; overflow: auto; margin: 0; padding: 12px;
+         background: #0b0b0c; color: #d6d6d6; font-size: 12px; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<pre id="out">running…</pre>
+<script type="module">
+import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.0.0/+esm';
+
+// maplibre-gl-js#8057 — tile organization should depend on camera POSITION only.
+//
+// This repro stands the camera at ONE fixed position a few metres above ground
+// (via the public calculateCameraOptionsFromTo, the same call a street-view app
+// uses) and only changes the LOOK DIRECTION (bearing + a little pitch). The
+// camera position input never changes. We record every tile the map REQUESTS
+// (transformRequest) so the effect is visible through public behaviour alone —
+// no internal covering-tiles API needed.
+//
+// If tile organization were position-only, rotating in place after the first
+// view settles would request ZERO new tiles. Instead each rotation reshuffles
+// the covering and pulls fresh tiles at shifting zooms — wasted loading, and a
+// shared URL renders differently depending on where the user happened to look.
+
+const CENTER = [2.3488, 48.8534];                 // Paris (fixed camera ground point)
+const EYE_M  = Number(new URLSearchParams(location.search).get('eye') || 3); // metres above ground
+const DIST_M = 120;                               // look-target distance
+const SWEEP = [                                   // (label, lookPitchDeg below horizon, bearing)
+  ['warmup',  6,   0],
+  ['yaw 45',  6,  45], ['yaw 90',  6,  90], ['yaw 135', 6, 135], ['yaw 180', 6, 180],
+  ['yaw 225', 6, 225], ['yaw 270', 6, 270], ['yaw 315', 6, 315], ['yaw 360', 6, 360],
+  ['pitch↓15',15, 360], ['pitch↓25',25, 360],
+];
+
+const out = document.getElementById('out');
+const lines = []; const log = (s = '') => { lines.push(s); out.textContent = lines.join('\n'); };
+
+// Every requested raster tile URL is captured here (z/x/y parsed from the URL).
+const requested = [];
+const tileRe = /\/(\d+)\/(\d+)\/(\d+)\.png/;
+
+const map = new maplibregl.Map({
+  container: 'map', center: CENTER, zoom: 18, maxPitch: 85, attributionControl: false,
+  style: { version: 8,
+    sources: { osm: { type: 'raster', tileSize: 256, maxzoom: 19,
+                      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'] } },
+    layers: [{ id: 'osm', type: 'raster', source: 'osm' }] },
+  transformRequest: (url, kind) => {
+    if (kind === 'Tile') { const m = tileRe.exec(url); if (m) requested.push({ z: +m[1], x: +m[2], y: +m[3] }); }
+    return { url };
+  }
+});
+
+// Point the camera FROM the fixed eye toward a target set by look direction —
+// the standard street-view move. Position (eye) is identical every call.
+function look(lookPitchDegBelow, bearingDeg) {
+  const yaw = bearingDeg * Math.PI / 180;
+  const pitch = -lookPitchDegBelow * Math.PI / 180;          // below horizon → negative elevation
+  const hd = DIST_M * Math.cos(pitch);
+  const dLat = (hd * Math.cos(yaw)) / 111320;
+  const dLng = (hd * Math.sin(yaw)) / (111320 * Math.cos(CENTER[1] * Math.PI / 180));
+  const target = [CENTER[0] + dLng, CENTER[1] + dLat];
+  const targetAlt = EYE_M + DIST_M * Math.sin(pitch);
+  map.jumpTo(map.calculateCameraOptionsFromTo(CENTER, EYE_M, target, targetAlt));
+}
+
+const once = (ev) => new Promise(r => map.once(ev, r));
+const settle = (ms) => Promise.race([once('idle'), new Promise(r => setTimeout(r, ms))]);
+const key = (t) => `${t.z}/${t.x}/${t.y}`;
+
+map.on('load', async () => {
+  log(`maplibre-gl v${maplibregl.getVersion ? maplibregl.getVersion() : '(5.x)'}`);
+  log(`camera eye HELD at lng=${CENTER[0]} lat=${CENTER[1]} alt=${EYE_M} m; only look direction changes`);
+  log('');
+  log('step        map.center (drifts)        zoom   pitch  bearing   NEW tiles   new-tile zooms');
+
+  const seen = new Set();
+  let sweepRequests = 0;
+
+  for (let i = 0; i < SWEEP.length; i++) {
+    const [label, lp, brg] = SWEEP[i];
+    const before = requested.length;
+    look(lp, brg);
+    await settle(4000);
+
+    // Tiles requested during THIS step, and how many were genuinely new.
+    const stepTiles = requested.slice(before);
+    const newOnes = stepTiles.filter(t => !seen.has(key(t)));
+    stepTiles.forEach(t => seen.add(key(t)));
+    const zsets = [...new Set(newOnes.map(t => t.z))].sort((a, b) => a - b).join(',');
+    const c = map.getCenter();
+
+    // The 'warmup' step legitimately loads the first view; count only rotations after it.
+    if (i > 0) sweepRequests += newOnes.length;
+
+    log([label.padEnd(10),
+         `${c.lng.toFixed(6)},${c.lat.toFixed(6)}`.padEnd(24),
+         map.getZoom().toFixed(2).padStart(6), map.getPitch().toFixed(1).padStart(6),
+         map.getBearing().toFixed(0).padStart(7),
+         String(newOnes.length).padStart(10),
+         `   ${zsets || '—'}`].join('  ')
+        + (i === 0 ? '   ← initial view (baseline)' : ''));
+  }
+
+  log('');
+  log(`camera eye input: CONSTANT across all ${SWEEP.length} steps`);
+  log(`tiles requested by ROTATION ALONE (after the initial view settled): ${sweepRequests}`);
+  log('');
+  log(sweepRequests > 0
+    ? 'RESULT: rotating in place at a fixed camera position reloads tiles → tile '
+      + 'organization is orientation-dependent, not position-only. Reproduces #8057.'
+    : 'RESULT: no rotation-triggered loads observed (try ?eye=10 or ?eye=30).');
+
+  window.__REPORT__ = lines.join('\n');
+  window.__ROT_REQUESTS__ = sweepRequests;
+  window.__DONE__ = true;
+});
+</script>
+</body>
+</html>
