@@ -1,0 +1,15 @@
+# MapMax SANDBOX image — the production static site PLUS sandbox-only extras,
+# served at sandbox.mapmax.confinia.io so www (the base image) stays pristine.
+# Currently the only addition is the tools/ dev pages (e.g. the MapLibre LOD
+# repro for maplibre-gl-js#8057). Keep the COPY lines below in sync with
+# ../Dockerfile — the sole difference is the `COPY tools/` line.
+FROM docker.io/library/nginx:1.27-alpine
+
+COPY index.html styles.css SPECIFICATIONS.md /usr/share/nginx/html/
+COPY src/ /usr/share/nginx/html/src/
+COPY assets/ /usr/share/nginx/html/assets/
+COPY vendor/ /usr/share/nginx/html/vendor/
+COPY tools/ /usr/share/nginx/html/tools/
+COPY docker/default.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
