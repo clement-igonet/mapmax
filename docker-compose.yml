@@ -30,10 +30,12 @@ services:
 
   # Isolated sandbox environment (sandbox.mapmax.confinia.io): its own container
   # behind the edge's access gate, so experimental/paid-tier builds can diverge
-  # from production. Same image for now; point `build` at a sandbox checkout to
-  # split the code line.
+  # from production. Built from docker/Dockerfile.sandbox = the base site PLUS
+  # sandbox-only extras (the tools/ dev pages), so www stays pristine.
   web-sandbox:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sandbox
 
   e2e:
     build: tests/browser

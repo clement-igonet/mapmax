@@ -7,7 +7,6 @@ COPY index.html styles.css SPECIFICATIONS.md /usr/share/nginx/html/
 COPY src/ /usr/share/nginx/html/src/
 COPY assets/ /usr/share/nginx/html/assets/
 COPY vendor/ /usr/share/nginx/html/vendor/
-COPY tools/ /usr/share/nginx/html/tools/
 COPY docker/default.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
