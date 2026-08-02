@@ -54,7 +54,10 @@ export const PHOTOSPHERE = {
 // This is a soft, feature-demo gate on a static site — it showcases the
 // purchase→unlock flow, it is not a cryptographic access boundary.
 export const POLAR = {
-  enabled: true,
+  // The sandbox is now gated by HTTP Basic Auth at the Caddy edge (docker/Caddyfile),
+  // not this in-app license overlay — simpler for a dev/PR sandbox. Flip to true to
+  // bring back the Polar purchase→unlock showcase (#76).
+  enabled: false,
   server: 'sandbox', // sandbox.polar.sh / sandbox-api.polar.sh
   apiBase: 'https://sandbox-api.polar.sh',
   organization: 'mapmax',

@@ -82,6 +82,23 @@ const key = (t) => `${t.z}/${t.x}/${t.y}`;
 
 map.on('load', async () => {
   log(`maplibre-gl v${maplibregl.getVersion ? maplibregl.getVersion() : '(5.x)'}`);
+
+  // Experiment (maplibre-gl-js#8057): with ?lod=positiononly, inject a custom
+  // position-only calculateTileZoom via the PUBLIC per-source hook — it ignores
+  // the orientation-dependent camera→center distance and keys the desired zoom
+  // only on the camera→tile geometry. If this alone kills the rotation churn,
+  // the existing hook suffices and no MapLibre core change is needed.
+  if (new URLSearchParams(location.search).get('lod') === 'positiononly') {
+    const src = map.getSource('osm');
+    // scaleZoom(x) = log2(x). Nadir tile (d2D=0 → d3D=dZ) keeps center zoom;
+    // farther tiles get lower zoom. No dependence on distanceToCenter3D.
+    src.calculateTileZoom = (requestedCenterZoom, d2D, dZ /*, dCenter3D, fov */) =>
+      requestedCenterZoom + Math.log2(Math.max(1e-6, dZ / Math.hypot(d2D, dZ)));
+    log('LOD MODE: position-only (custom calculateTileZoom via public per-source hook)');
+  } else {
+    log('LOD MODE: default (stock MapLibre calculateTileZoom)');
+  }
+
   log(`camera eye HELD at lng=${CENTER[0]} lat=${CENTER[1]} alt=${EYE_M} m; only look direction changes`);
   log('');
   log('step        map.center (drifts)        zoom   pitch  bearing   NEW tiles   new-tile zooms');
