@@ -26,15 +26,11 @@
 
 	@sandbox host sandbox.mapmax.confinia.io
 	handle @sandbox {
-		# The dev/PR sandbox is gated by HTTP Basic Auth at the edge (replaces the
-		# in-app Polar license overlay, #76 — POLAR.enabled=false). /tools/* stays
-		# OPEN so demos/repros can be shared publicly (e.g. the LOD repro for
-		# maplibre-gl-js#8057). bcrypt hash of a strong random password; safe to
-		# ship (offline brute-force of bcrypt is infeasible).
-		@gated not path /tools/*
-		basic_auth @gated {
-			mapmax $2a$14$a8uOzHbJRGb1LCPUJV2UX.j7hzdy4uR/iQ02DuI72yQlXhm4TH65O
-		}
+		# OPEN access — no early gate (#92): the priority is to let users actually
+		# try the app first. The Polar license overlay (#76) is retired
+		# (POLAR.enabled=false) and edge basic-auth removed. Future usage limiting
+		# is a SOFT, non-blocking in-app 360°-panorama counter (#92), not an edge
+		# block.
 		reverse_proxy web-sandbox:80
 	}
 
