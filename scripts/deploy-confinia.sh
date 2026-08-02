@@ -22,21 +22,22 @@ rsync -a --delete \
   "$SRC"/ "$DEST"/
 echo "::endgroup::"
 
-echo "::group::build + (re)start stack"
+echo "::group::build + restart stack (systemd-managed)"
 cd "$DEST"
-# Signal the edge watchdog to stand down while we deploy (it would otherwise see
-# the brief down-window and try to 'recover', racing us) (#90).
-touch "$HOME/.mapmax-deploying"
-trap 'rm -f "$HOME/.mapmax-deploying"' EXIT
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 WEB_PORT="$PORT" podman-compose build web web-sandbox
-# Clean forwarder lifecycle (#90): podman doesn't reliably kill the rootless
-# port-forwarder on --force-recreate, so they pile up and fight over the port
-# (`internal libpod error`, intermittent 502s). down + reap any stray
-# rootlessport + up yields exactly one fresh forwarder.
-WEB_PORT="$PORT" podman-compose down
-pkill -u "$(id -un)" rootlessport 2>/dev/null || true
-sleep 1
-WEB_PORT="$PORT" podman-compose up -d edge web web-sandbox
+# The stack runs as a persistent systemd user service (mapmax-stack.service, on
+# the VM) so the rootless port-forwarder is owned by SYSTEMD, not this deploy job.
+# `podman-compose up -d` from a CI job/SSH leaves the forwarder in the caller's
+# cgroup, so it's killed when the job ends → post-deploy 502s (#90). Restarting
+# the service re-ups with the freshly built images (its ExecStartPre downs first)
+# and keeps the forwarder alive across the job. Restart=always is the auto-heal,
+# so no separate watchdog is needed.
+systemctl --user restart mapmax-stack.service
+# Wait for the edge to actually serve before health-checking.
+for _ in $(seq 1 30); do
+  curl -sf --max-time 4 -o /dev/null "http://127.0.0.1:${PORT}/" -H 'Host: www.mapmax.confinia.io' && break || sleep 2
+done
 echo "::endgroup::"
 
 echo "::group::health check (served == disk)"
