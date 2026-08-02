@@ -24,11 +24,19 @@ echo "::endgroup::"
 
 echo "::group::build + (re)start stack"
 cd "$DEST"
-# COPY layers bust on changed file checksums; --force-recreate guarantees the
-# running containers are replaced by the freshly built images (a plain
-# `up --build` can rebuild the image yet keep the old container).
+# Signal the edge watchdog to stand down while we deploy (it would otherwise see
+# the brief down-window and try to 'recover', racing us) (#90).
+touch "$HOME/.mapmax-deploying"
+trap 'rm -f "$HOME/.mapmax-deploying"' EXIT
 WEB_PORT="$PORT" podman-compose build web web-sandbox
-WEB_PORT="$PORT" podman-compose up -d --force-recreate edge web web-sandbox
+# Clean forwarder lifecycle (#90): podman doesn't reliably kill the rootless
+# port-forwarder on --force-recreate, so they pile up and fight over the port
+# (`internal libpod error`, intermittent 502s). down + reap any stray
+# rootlessport + up yields exactly one fresh forwarder.
+WEB_PORT="$PORT" podman-compose down
+pkill -u "$(id -un)" rootlessport 2>/dev/null || true
+sleep 1
+WEB_PORT="$PORT" podman-compose up -d edge web web-sandbox
 echo "::endgroup::"
 
 echo "::group::health check (served == disk)"
