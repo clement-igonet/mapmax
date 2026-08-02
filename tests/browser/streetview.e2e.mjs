@@ -420,40 +420,16 @@ assert.ok(favicon?.startsWith('data:image/svg+xml'), 'inline favicon missing');
 
 console.log(`[e2e] OK — MapLibre 6 map ready, plugin drive OK, console clean (${errors.length} errors, ${warnings.length} warnings, 0 offenders)`);
 
-// #76 license gate: on the sandbox host (simulated with ?sandbox=1) the app is
-// gated until a valid Polar license key is entered. Polar's validate call is
-// mocked so the test is deterministic (the real 200/404 contract is unit-tested).
+// Sandbox access is now HTTP Basic Auth at the Caddy edge, not the in-app Polar
+// overlay (POLAR.enabled=false, #76 retired). Confirm the overlay stays OFF even
+// on the simulated sandbox host (?sandbox=1); the licensegate.js pure functions
+// remain unit-tested for if/when the Polar showcase is re-enabled.
 const gatePage = await browser.newPage({ viewport: { width: 1024, height: 768 } });
-await gatePage.route('**/customer-portal/license-keys/validate', async (route) => {
-  const key = (route.request().postDataJSON()?.key) || '';
-  const ok = key.includes('MAPMAX-E966');
-  await route.fulfill({ status: ok ? 200 : 404, contentType: 'application/json', body: JSON.stringify(ok ? { id: 'lk', status: 'granted' } : { error: 'ResourceNotFound' }) });
-});
 await gatePage.goto(`${base}?sandbox=1`, { waitUntil: 'load', timeout: 60000 });
-await gatePage.waitForSelector('#license-gate', { timeout: 15000 });
-const gate = await gatePage.evaluate(() => ({
-  overlay: !!document.getElementById('license-gate'),
-  gatedClass: document.body.classList.contains('license-gated'),
-  buyHref: document.getElementById('license-buy')?.getAttribute('href') || '',
-}));
-assert.ok(gate.overlay && gate.gatedClass, 'sandbox host not gated (#76)');
-assert.ok(/checkout-links/.test(gate.buyHref), 'checkout link missing from the gate (#76)');
-// wrong key → gate stays, error shown
-await gatePage.fill('#license-key-input', 'MAPMAX-0000-0000-0000-000000000000');
-await gatePage.click('#license-unlock');
-await gatePage.waitForFunction(() => document.querySelector('#license-msg')?.classList.contains('license-err'), { timeout: 8000 });
-assert.ok(await gatePage.$('#license-gate'), 'gate wrongly opened on an invalid key (#76)');
-// valid key → gate removed + entitlement cached
-await gatePage.fill('#license-key-input', 'MAPMAX-E966D592-D1DF-4F38-A0CC-2E696A505869');
-await gatePage.click('#license-unlock');
-await gatePage.waitForFunction(() => !document.getElementById('license-gate'), { timeout: 8000 });
-const cached = await gatePage.evaluate(() => localStorage.getItem('mapmax:license'));
-assert.ok(cached && cached.includes('MAPMAX-E966'), 'entitlement not cached after unlock (#76)');
-// reload → cached entitlement skips the gate
-await gatePage.goto(`${base}?sandbox=1`, { waitUntil: 'load', timeout: 60000 });
-await gatePage.waitForTimeout(1500);
-assert.ok(!(await gatePage.$('#license-gate')), 'cached entitlement did not skip the gate on reload (#76)');
-console.log('[e2e] license gate: blocks unlicensed, rejects bad key, unlocks + caches on valid key (#76) OK');
+await gatePage.waitForSelector('#map canvas', { timeout: 30000 });
+await gatePage.waitForTimeout(1000);
+assert.ok(!(await gatePage.$('#license-gate')), 'in-app license overlay present — should be retired (sandbox is edge basic-auth now, POLAR.enabled=false)');
+console.log('[e2e] sandbox in-app license overlay retired — edge basic-auth (POLAR.enabled=false) OK');
 await gatePage.close();
 
 await browser.close();
