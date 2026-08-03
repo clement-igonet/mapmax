@@ -11,6 +11,11 @@
 services:
   build:
     image: docker.io/library/node:24-bookworm
+    # Host networking: this VM resolves registry.npmjs.org to IPv6-only (AAAA)
+    # addresses, and the rootless compose project network has no IPv6 egress, so
+    # `npm ci` fails with ENETUNREACH. The host netns has working IPv6, and a build
+    # container needs no isolation — so borrow the host's network. (mapmax#94)
+    network_mode: host
     environment:
       - REPO=${REPO:-maplibre/maplibre-gl-js}
       - REF=${REF:-main}
