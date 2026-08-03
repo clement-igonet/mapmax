@@ -110,6 +110,20 @@ export function getCurrentPose() {
   };
 }
 
+// Debounced pose persistence (#98): a slider drag fires dozens of input events
+// per second — a synchronous localStorage write on each contributes jank while
+// the canvas repaints. Apply live, persist once the drag settles.
+let poseSaveTimer = 0;
+let poseSavePending = null; // { key, pose, yaw } — yaw only once touched
+function flushPoseSave() {
+  clearTimeout(poseSaveTimer);
+  if (!poseSavePending) return;
+  const p = poseSavePending;
+  poseSavePending = null;
+  lsSet(POSE_STORE_KEY(p.key), p.pose);
+  if (p.yaw != null) lsSet(OVERRIDE_KEY(p.key), p.yaw);
+}
+
 // Live-apply + persist locally (anonymous fallback — write-back is separate).
 // Only the components provided change.
 export function setCurrentPose({ pitch, roll, yaw } = {}) {
@@ -117,11 +131,18 @@ export function setCurrentPose({ pitch, roll, yaw } = {}) {
   const key = current.sequenceId || current.id;
   if (typeof pitch === 'number' && Number.isFinite(pitch)) current.posePitch = pitch;
   if (typeof roll === 'number' && Number.isFinite(roll)) current.poseRoll = roll;
-  lsSet(POSE_STORE_KEY(key), JSON.stringify({ pitch: current.posePitch || 0, roll: current.poseRoll || 0 }));
-  if (typeof yaw === 'number' && Number.isFinite(yaw)) {
-    current.yawOffset = normalizeYaw(yaw);
-    lsSet(OVERRIDE_KEY(key), String(current.yawOffset));
-  }
+  const yawTouched = typeof yaw === 'number' && Number.isFinite(yaw);
+  if (yawTouched) current.yawOffset = normalizeYaw(yaw);
+  poseSavePending = {
+    key,
+    pose: JSON.stringify({ pitch: current.posePitch || 0, roll: current.poseRoll || 0 }),
+    // Carry an earlier-touched yaw across the merge so a later pitch/roll tweak
+    // doesn't drop it; never write the yaw override unless the user set it.
+    yaw: yawTouched ? String(current.yawOffset)
+      : (poseSavePending && poseSavePending.key === key ? poseSavePending.yaw : null),
+  };
+  clearTimeout(poseSaveTimer);
+  poseSaveTimer = setTimeout(flushPoseSave, 250);
   photosphere.setPanoPose({
     yaw: normalizeYaw((current.heading || 0) + (current.yawOffset || 0)),
     pitch: current.posePitch || 0,
@@ -149,6 +170,7 @@ export async function savePoseToPanoramax(token) {
 
 // Enter street view at `pic` (first click) or walk to it (already inside).
 export async function enterStreetView(map, pic) {
+  flushPoseSave(); // a still-pending pose write must land before we read the store (#98)
   pic.yawOffset = await resolveYawOffset(pic);
   const pr = resolvePitchRoll(pic); // #98
   pic.posePitch = pr.pitch;
@@ -212,6 +234,7 @@ export function setBlend(alpha) {
 }
 
 export function exitStreetView() {
+  flushPoseSave(); // don't lose a tweak made just before Esc (#98)
   if (!photosphere) return;
   // Restore tiled layers before the exit animation so the map is there to
   // animate back onto (#11).

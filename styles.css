@@ -144,6 +144,10 @@ body {
   right: 50px;
   z-index: 20;
   width: 250px;
+  /* Own compositor layer: without it the panel's children flicker/tear while
+     the WebGL canvas beneath repaints on every slider tick (#98). */
+  transform: translateZ(0);
+  will-change: transform;
   background: rgba(20, 20, 24, 0.9);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.3);

@@ -429,6 +429,9 @@ if (nav.skipped) {
     rollSlider.value = '3';
     rollSlider.dispatchEvent(new Event('input'));
     const after = sv._photosphere().getPanoPose();
+    // Persistence is debounced (~250 ms) so drags don't hammer localStorage —
+    // wait for the flush before reading it back.
+    await new Promise((r) => setTimeout(r, 450));
     const stored = Object.keys(localStorage).filter((k) => k.startsWith('mapmax:pose:'))
       .map((k) => JSON.parse(localStorage.getItem(k)))[0];
     // Reset so the leveller leaves no residue for later runs/assertions.
