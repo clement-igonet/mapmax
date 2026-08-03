@@ -30,7 +30,24 @@ Work is tracked through [GitHub Issues](../../issues) and merged via Pull Reques
 
 ## Deployment
 
-Deployed continuously to GitHub Pages from `main`: https://clement-igonet.github.io/mapmax/
+Deployed continuously from `main`:
+
+- **GitHub Pages** (prod mirror): https://clement-igonet.github.io/mapmax/
+- **confinia stack** — a single `docker-compose.yml` split into three named web
+  services behind a Caddy edge (`docker/Caddyfile`), each an isolated image so
+  environments can diverge cleanly:
+
+  | env | host | image | env baked | notable |
+  |-----|------|-------|-----------|---------|
+  | **prod** | [www.mapmax.confinia.io](https://www.mapmax.confinia.io) | `Dockerfile` | `prod` | stock MapLibre 6.1.0 |
+  | **staging** | [staging.mapmax.confinia.io](https://staging.mapmax.confinia.io) | `Dockerfile` (arg) | `staging` | pre-prod validator for candidate features |
+  | **sandbox** | [sandbox.mapmax.confinia.io](https://sandbox.mapmax.confinia.io) | `docker/Dockerfile.sandbox` | `sandbox` | position-only-LOD MapLibre build (maplibre#8057) + `tools/` |
+
+  The deployment env is baked per image (`Dockerfile ARG MAPMAX_ENV` → `src/env.js`);
+  feature gating derives from it (`buildingsClipEnabled(env)`), so behaviour is
+  deployment-driven, not URL-driven. A self-hosted runner on the VM runs the
+  `ci-test.sh` gate (unit + containerized e2e) then rebuilds the stack, which runs
+  as a persistent systemd user service (`mapmax-stack.service`).
 
 ## License
 

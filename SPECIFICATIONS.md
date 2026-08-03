@@ -51,7 +51,7 @@ The user navigates the world at street level, from photosphere to photosphere, w
 ### 2.6 Ground and buildings
 
 - **Ground**: OSM rendering (vector tiles styled in MapLibre) serves as the ground plane under/behind the photo.
-- **Buildings**: 3D elevation using MapLibre capabilities (`fill-extrusion`) from OSM vector data (building footprints + height/levels tags).
+- **Buildings**: 3D elevation using MapLibre capabilities (`fill-extrusion`) from OSM vector data (building footprints + height/levels tags). In street mode they are clipped to a radius around the standpoint (position-only) so far dense tiles don't overflow MapLibre's 65535-vtx/segment limit or churn at the horizon — see [LOD.md](LOD.md) and #95.
 
 ### 2.7 Vector / photo mixing
 
