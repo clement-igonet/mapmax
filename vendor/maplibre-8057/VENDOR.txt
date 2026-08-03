@@ -1,3 +1,5 @@
-clement-igonet/maplibre-gl-js @ feat/position-only-lod-8057-refined
-71e87328975e4f8376d7d3d8caf65dc9a3dfc57d
-2026-08-03T09:32:01Z
+ROLLBACK to stock maplibre 6.1.0 (sandbox == www) — the position-only-LOD
+prototype collapsed tile zoom at high pitch (distanceToTileZ->0), overflowing
+the 65535-vertex fill-extrusion bucket limit. Reverted pending a corrected
+formula. See maplibre#8057.
+2026-08-03T10:36:52Z
