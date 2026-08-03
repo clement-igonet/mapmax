@@ -1,0 +1,20 @@
+# Containerized maplibre-gl-js source build (mapmax#94).
+#
+# Builds a given repo@ref from source and emits the ESM dist to ./out, so we can
+# vendor an UNRELEASED build (e.g. the #8057 position-only-LOD fork branch) that
+# has no pre-built bundle. node:24 — MapLibre's devDeps require node >=22.18.
+#
+#   REPO=clement-igonet/maplibre-gl-js REF=feat/position-only-lod-8057 \
+#     podman-compose -f build/maplibre/docker-compose.yml run --rm build
+#
+# scripts/vendor-maplibre.sh wraps this and copies ./out into a vendor dir.
+services:
+  build:
+    image: docker.io/library/node:24-bookworm
+    environment:
+      - REPO=${REPO:-maplibre/maplibre-gl-js}
+      - REF=${REF:-main}
+    volumes:
+      - ./build.sh:/build.sh:ro
+      - ./out:/out
+    command: ["bash", "/build.sh"]
