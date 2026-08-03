@@ -9,4 +9,10 @@ COPY assets/ /usr/share/nginx/html/assets/
 COPY vendor/ /usr/share/nginx/html/vendor/
 COPY docker/default.conf /etc/nginx/conf.d/default.conf
 
+# Bake the deployment env into env.js so feature gating is deployment-driven, not
+# URL-driven (#95 stack split). `web` builds the default (prod); `web-staging`
+# passes MAPMAX_ENV=staging; the sandbox image sets sandbox.
+ARG MAPMAX_ENV=prod
+RUN printf "export const MAPMAX_ENV = '%s';\n" "$MAPMAX_ENV" > /usr/share/nginx/html/src/env.js
+
 EXPOSE 80

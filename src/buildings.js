@@ -14,12 +14,12 @@ export function buildingRadiusFilter(orig, lng, lat, radiusM) {
   return orig ? ['all', orig, near] : near;
 }
 
-// The clip is a sandbox-only experiment for now (#95): active on the sandbox
-// host, or on any host with ?sandbox=1 (dev/e2e). Never affects www. Independent
-// of the (disabled) Polar license gate.
-export function isSandboxHost(hostname, search, gatedHost) {
+// The clip runs on the `staging` and `sandbox` environments (not prod yet, #95),
+// or on any host with ?sandbox=1 (dev/e2e). Env is deployment-baked (env.js),
+// so this is deployment-driven, not URL-driven.
+export function buildingsClipEnabled(env, search) {
   if (/[?&]sandbox=1(&|$)/.test(search || '')) return true;
-  return (hostname || '') === gatedHost;
+  return env === 'staging' || env === 'sandbox';
 }
 
 // Live tuning: a ?buildingsRadius=<metres> override in the URL query. Returns
