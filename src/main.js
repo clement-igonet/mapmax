@@ -277,3 +277,18 @@ function ensureBuildings3D() {
     },
   });
 }
+
+// Inside a photosphere the map zoom is DERIVED from the look direction (the
+// plugin re-derives it each look), so it drifts with pitch — and the z18
+// building gate then toggles the WHOLE layer on/off as you look around: a 1°
+// pitch change can flip every building (#87). While inside the sphere, pin the
+// gate below the street-mode zoom so buildings stay stable across all pitches;
+// restore the z18 near-only gate on exit (map mode is unaffected).
+const STREET_BUILDINGS_MIN_ZOOM = 15;
+function setBuildingsGate(minz) {
+  for (const l of map.getStyle().layers) {
+    if (l.type !== 'fill-extrusion') continue;
+    try { map.setLayerZoomRange(l.id, minz, 24); } catch { /* ignore */ }
+  }
+}
+onPictureChanged((pic) => setBuildingsGate(pic ? STREET_BUILDINGS_MIN_ZOOM : BUILDINGS_MIN_ZOOM));

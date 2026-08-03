@@ -278,9 +278,14 @@ const nav = await page.evaluate(async () => {
   const fovChanged = ps._options.fov !== fov0;
   const fovSyncAfterZoom = Math.abs(map.getVerticalFieldOfView() - ps._options.fov) < 0.01;
   const minimapShown = !document.getElementById('minimap').hidden;
+  // #87: inside the photosphere the building gate must be pinned below z18 so it
+  // doesn't blink on/off as the derived zoom drifts with pitch.
+  const feMin = () => Math.min(...map.getStyle().layers.filter((l) => l.type === 'fill-extrusion').map((l) => l.minzoom ?? 0));
+  const buildingGateInside = feMin();
   sv.setBlend(sliderToBlend(50)); // leave mixed to check restore path on exit
   sv.exitStreetView();
   await waitFor(() => !sv.isStreetMode(), 8000);
+  const buildingGateAfter = feMin(); // restored to the z18 near-only gate
   const urlPicAfterExit = new URLSearchParams(location.search).get('pic'); // #54: cleared on exit
   const visibleAfter = tiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
@@ -294,6 +299,7 @@ const nav = await page.evaluate(async () => {
            panoYawApplied, walkPanoYawApplied, urlPicOnEnter, deepLinkId, urlPicAfterExit,
            navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
+           buildingGateInside, buildingGateAfter,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
 });
 if (nav.skipped) {
@@ -336,6 +342,9 @@ if (nav.skipped) {
   assert.ok(nav.backdropApplied, 'street mode did not replace the raw-white background with a ground tone (#37)');
   assert.notEqual(nav.bgAfterExit, '#d7d9dc', 'street backdrop not restored on exit (#37)');
   console.log('[e2e] street backdrop applied + restored on exit (#37) OK');
+  assert.ok(nav.buildingGateInside < 18, `building gate not pinned inside the photosphere (minzoom ${nav.buildingGateInside}) — buildings would blink with pitch (#87)`);
+  assert.equal(nav.buildingGateAfter, 18, `building gate not restored to z18 on exit (got ${nav.buildingGateAfter}) (#87/#82)`);
+  console.log(`[e2e] building gate pinned inside (z${nav.buildingGateInside}), restored to z18 on exit — no pitch blink (#87) OK`);
   console.log(`[e2e] incrusted nav OK (${nav.navTargets} targets, GL layers, click-safe)`);
   console.log(`[e2e] enter/exit OK; walk OK (#5); tile ${nav.hiddenInside}/${nav.tiledCount}; blend OK (OSM ${nav.osmVisibleAtMixed}/${nav.osmTiledCount}, panoramax kept ${nav.panoramaxHiddenAtMixed}/${nav.panoramaxTiledCount} suspended #27); controls OK; FOV sync OK`);
 
