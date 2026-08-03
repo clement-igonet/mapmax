@@ -28,12 +28,11 @@ Deno.test('buildingRadiusFilter: uses distance (not within), so tile-clipped pol
   assertEquals(f[1][0], 'distance');
 });
 
-Deno.test('buildingsClipEnabled: staging + sandbox on, prod off (unless ?sandbox=1)', () => {
-  assertEquals(buildingsClipEnabled('staging', ''), true);
-  assertEquals(buildingsClipEnabled('sandbox', ''), true);
-  assertEquals(buildingsClipEnabled('prod', ''), false);
-  assertEquals(buildingsClipEnabled('prod', '?sandbox=1'), true); // dev/e2e override
-  assertEquals(buildingsClipEnabled('prod', '?foo=1'), false);
+Deno.test('buildingsClipEnabled: on in every deployed env (#95 promoted to prod)', () => {
+  assertEquals(buildingsClipEnabled('prod'), true);
+  assertEquals(buildingsClipEnabled('staging'), true);
+  assertEquals(buildingsClipEnabled('sandbox'), true);
+  assertEquals(buildingsClipEnabled('dev'), false); // unknown env → off (safe default)
 });
 
 Deno.test('parseRadiusOverride: reads ?buildingsRadius, honours 0, falls back otherwise', () => {

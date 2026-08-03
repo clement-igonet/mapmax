@@ -294,12 +294,12 @@ function setBuildingsGate(minz) {
   }
 }
 
-// Clip 3D buildings to a radius around the standpoint in street mode (#95).
-// Enabled on the `staging` and `sandbox` envs, off on prod (env.js / the split);
-// the radius is runtime-variable — ?buildingsRadius=<m> in the URL, or
+// Clip 3D buildings to a radius around the standpoint in street mode (#95),
+// enabled in every env (promoted to prod after staging validation). The radius
+// is runtime-variable — ?buildingsRadius=<m> in the URL, or
 // window.setBuildingsRadius(m) in the console; 0 disables. `center` null (map
 // mode) restores each layer's original filter. Filter builder is unit-tested.
-const buildingsClipOn = buildingsClipEnabled(MAPMAX_ENV, location.search);
+const buildingsClipOn = buildingsClipEnabled(MAPMAX_ENV);
 let buildingsRadiusM = parseRadiusOverride(location.search, STREET_BUILDINGS_RADIUS_M);
 let buildingsStandpoint = null;
 const origBuildingFilter = new Map();
@@ -313,7 +313,10 @@ function setBuildingsRadius(center) {
     if (!origBuildingFilter.has(l.id)) origBuildingFilter.set(l.id, map.getFilter(l.id) ?? null);
     const orig = origBuildingFilter.get(l.id);
     try {
-      map.setFilter(l.id, clip ? buildingRadiusFilter(orig, center.lng, center.lat, buildingsRadiusM) : orig);
+      // validate:false — setFilter's built-in validation re-checks the whole
+      // style and can re-surface already-hardened filters' null warnings in the
+      // street-mode state (#95); the filter we pass is built here and safe.
+      map.setFilter(l.id, clip ? buildingRadiusFilter(orig, center.lng, center.lat, buildingsRadiusM) : orig, { validate: false });
     } catch { /* ignore */ }
   }
 }

@@ -14,12 +14,11 @@ export function buildingRadiusFilter(orig, lng, lat, radiusM) {
   return orig ? ['all', orig, near] : near;
 }
 
-// The clip runs on the `staging` and `sandbox` environments (not prod yet, #95),
-// or on any host with ?sandbox=1 (dev/e2e). Env is deployment-baked (env.js),
-// so this is deployment-driven, not URL-driven.
-export function buildingsClipEnabled(env, search) {
-  if (/[?&]sandbox=1(&|$)/.test(search || '')) return true;
-  return env === 'staging' || env === 'sandbox';
+// The clip now runs in every deployed env — #95 promoted to prod after staging
+// validation. Kept as a (test-covered) function so a future env can opt out and
+// so ?buildingsRadius=0 / the console setter can still disable it at runtime.
+export function buildingsClipEnabled(env) {
+  return env === 'prod' || env === 'staging' || env === 'sandbox';
 }
 
 // Live tuning: a ?buildingsRadius=<metres> override in the URL query. Returns
