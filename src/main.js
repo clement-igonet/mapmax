@@ -1,8 +1,8 @@
 // MapMax entry point — MapLibre map (OSM ground + 3D buildings) with immersive
 // Panoramax photospheres via the vendored maplibre-gl-photosphere plugin.
 import * as maplibregl from 'maplibre-gl';
-import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M } from './config.js';
-import { buildingRadiusFilter } from './buildings.js';
+import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, POLAR } from './config.js';
+import { buildingRadiusFilter, isSandboxHost, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { _photosphere, enterStreetView, exitStreetView, flipCurrentPano, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
@@ -293,22 +293,35 @@ function setBuildingsGate(minz) {
   }
 }
 
-// Clip 3D buildings to a radius around the standpoint in street mode (#95, see
-// STREET_BUILDINGS_RADIUS_M). `center` null (map mode) restores each layer's
+// Clip 3D buildings to a radius around the standpoint in street mode (#95). A
+// SANDBOX-ONLY experiment for now (off on www), so we can tune it live: the radius
+// is runtime-variable — ?buildingsRadius=<m> in the URL, or window.setBuildingsRadius(m)
+// in the console; 0 disables. `center` null (map mode) restores each layer's
 // original filter. The filter builder is pure and unit-tested (buildings.js).
+const buildingsClipOn = isSandboxHost(location.hostname, location.search, POLAR.gatedHost);
+let buildingsRadiusM = parseRadiusOverride(location.search, STREET_BUILDINGS_RADIUS_M);
+let buildingsStandpoint = null;
 const origBuildingFilter = new Map();
 function setBuildingsRadius(center) {
+  const clip = buildingsClipOn && center && buildingsRadiusM > 0;
   for (const l of map.getStyle().layers) {
     if (l.type !== 'fill-extrusion') continue;
     if (!origBuildingFilter.has(l.id)) origBuildingFilter.set(l.id, map.getFilter(l.id) ?? null);
     const orig = origBuildingFilter.get(l.id);
     try {
-      map.setFilter(l.id, center ? buildingRadiusFilter(orig, center.lng, center.lat, STREET_BUILDINGS_RADIUS_M) : orig);
+      map.setFilter(l.id, clip ? buildingRadiusFilter(orig, center.lng, center.lat, buildingsRadiusM) : orig);
     } catch { /* ignore */ }
   }
 }
+// Live tuning from the console (sandbox): e.g. window.setBuildingsRadius(80).
+window.setBuildingsRadius = (m) => {
+  buildingsRadiusM = Number(m) || 0;
+  setBuildingsRadius(buildingsStandpoint);
+  return buildingsRadiusM;
+};
 
 onPictureChanged((pic) => {
   setBuildingsGate(pic ? STREET_BUILDINGS_MIN_ZOOM : BUILDINGS_MIN_ZOOM);
-  setBuildingsRadius(pic ? { lng: pic.lon, lat: pic.lat } : null);
+  buildingsStandpoint = pic ? { lng: pic.lon, lat: pic.lat } : null;
+  setBuildingsRadius(buildingsStandpoint);
 });
