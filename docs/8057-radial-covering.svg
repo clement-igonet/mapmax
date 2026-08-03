@@ -30,8 +30,8 @@
   <line x1="450" y1="20" x2="450" y2="420" stroke="#e1e4e8" stroke-width="1.5"/>
 
   <!-- ============ RIGHT: proposed (position-only radial disk) ============ -->
-  <text x="480" y="34" font-size="18" font-weight="700" fill="#24292f">firstPersonLod — covering = radial disk</text>
-  <text x="480" y="56" font-size="13" fill="#57606a">zoom keyed on distance to the CAMERA; f(position) only</text>
+  <text x="480" y="34" font-size="18" font-weight="700" fill="#24292f">Proposed — position-only LOD field</text>
+  <text x="480" y="56" font-size="13" fill="#57606a">zoom = f(distance to CAMERA), independent of look; load only the view slice</text>
 
   <g transform="translate(690,240)">
     <!-- concentric LOD rings: inner = high zoom (fine), outer = low zoom (coarse) -->
@@ -45,13 +45,13 @@
     </g>
     <!-- current view = one slice of the disk -->
     <path d="M0 0 L52 -140 L-52 -140 Z" fill="#fde68a" opacity="0.55" stroke="#d97706" stroke-width="1.5"/>
-    <text x="0" y="-120" font-size="11" fill="#92400e" text-anchor="middle">view</text>
+    <text x="0" y="-120" font-size="11" fill="#92400e" text-anchor="middle">loaded</text>
     <!-- ring labels -->
     <text x="0" y="30" font-size="11" fill="#1e3a8a" text-anchor="middle">near = high z</text>
     <text x="0" y="128" font-size="11" fill="#1e3a8a" text-anchor="middle">far = low z</text>
     <circle cx="0" cy="0" r="7" fill="#ef4444"/>
   </g>
-  <text x="690" y="418" font-size="13" fill="#0a7d33" font-weight="600" text-anchor="middle">any bearing/pitch = same disk · only MOVING recomputes</text>
+  <text x="690" y="418" font-size="13" fill="#0a7d33" font-weight="600" text-anchor="middle">a tile's zoom = f(position) ⇒ no re-LOD on look · cache stays valid</text>
 
   <defs>
     <marker id="arw" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
