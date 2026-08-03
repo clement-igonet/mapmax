@@ -5,7 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M } f
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, enterStreetView, exitStreetView, flipCurrentPano, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
+import { _photosphere, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -93,6 +93,7 @@ function revealStreetUI() {
   document.getElementById('blend-control').hidden = false;
   document.getElementById('minimap').hidden = false;
   document.getElementById('flip-pano').hidden = false;
+  document.getElementById('pose-toggle').hidden = false;
 }
 let currentPic = null;
 onPictureChanged((pic) => {
@@ -217,6 +218,8 @@ const leaveStreetUI = () => {
   document.getElementById('blend-control').hidden = true;
   document.getElementById('minimap').hidden = true;
   document.getElementById('flip-pano').hidden = true;
+  document.getElementById('pose-toggle').hidden = true;
+  document.getElementById('pose-panel').hidden = true;
   blendSlider.value = '100';
   status('Zoom in and click a Panoramax picture dot.');
 };
@@ -227,6 +230,75 @@ const leaveStreetUI = () => {
 document.getElementById('flip-pano').addEventListener('click', () => {
   const applied = flipCurrentPano();
   if (applied != null) status(`Photo rotated ${applied ? '180°' : 'back to metadata orientation'} for this sequence.`);
+  syncPosePanel();
+});
+
+// Pose leveller (#98): pitch/roll/yaw sliders apply live (and persist per
+// sequence in this browser); with a Panoramax token the pose is PATCHed back
+// to the picture's home instance so the fix holds for every viewer.
+const posePanel = document.getElementById('pose-panel');
+const poseStatus = document.getElementById('pose-status');
+const poseTokenInput = document.getElementById('pose-token');
+const POSE_STATUS_DEFAULT = poseStatus.textContent;
+const poseSliders = {
+  pitch: document.getElementById('pose-pitch'),
+  roll: document.getElementById('pose-roll'),
+  yaw: document.getElementById('pose-yaw'),
+};
+const poseVals = {
+  pitch: document.getElementById('pose-pitch-val'),
+  roll: document.getElementById('pose-roll-val'),
+  yaw: document.getElementById('pose-yaw-val'),
+};
+// The yaw slider edits the offset in ±180 around the GPS direction; storage
+// and the PATCH API use [0,360).
+const yawToSlider = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
+
+function syncPosePanel() {
+  const pose = getCurrentPose();
+  if (!pose || posePanel.hidden) return;
+  poseSliders.pitch.value = String(pose.pitch);
+  poseSliders.roll.value = String(pose.roll);
+  poseSliders.yaw.value = String(yawToSlider(pose.yaw));
+  for (const k of ['pitch', 'roll', 'yaw']) poseVals[k].textContent = `${poseSliders[k].value}°`;
+}
+onPictureChanged(() => syncPosePanel());
+
+document.getElementById('pose-toggle').addEventListener('click', () => {
+  posePanel.hidden = !posePanel.hidden;
+  if (!posePanel.hidden) {
+    poseTokenInput.value = sessionStorage.getItem('mapmax:panoramax-token') || '';
+    poseStatus.textContent = POSE_STATUS_DEFAULT;
+    syncPosePanel();
+  }
+});
+
+for (const k of ['pitch', 'roll', 'yaw']) {
+  poseSliders[k].addEventListener('input', () => {
+    const v = parseFloat(poseSliders[k].value);
+    poseVals[k].textContent = `${poseSliders[k].value}°`;
+    setCurrentPose({ [k]: k === 'yaw' ? (v + 360) % 360 : v });
+  });
+}
+
+document.getElementById('pose-reset').addEventListener('click', () => {
+  setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
+  syncPosePanel();
+  poseStatus.textContent = 'Pose reset to the metadata orientation.';
+});
+
+document.getElementById('pose-save').addEventListener('click', async () => {
+  const token = poseTokenInput.value.trim();
+  if (!token) {
+    poseStatus.textContent = 'No token — the correction stays in this browser only. Paste a Panoramax API token to fix it at the source.';
+    return;
+  }
+  sessionStorage.setItem('mapmax:panoramax-token', token); // session only — never persisted
+  poseStatus.textContent = 'Saving pose to Panoramax…';
+  const res = await savePoseToPanoramax(token);
+  poseStatus.textContent = res.ok
+    ? 'Saved — the pose is now corrected on Panoramax for every viewer.'
+    : `Save failed: ${res.error || res.status}. The correction still applies in this browser.`;
 });
 exitBtn.addEventListener('click', () => {
   if (isStreetMode()) exitStreetView();

@@ -20,6 +20,30 @@
     </div>
     <button type="button" id="exit-street" title="Back to map (Esc)" hidden>✕ Map</button>
     <button type="button" id="flip-pano" title="Photo direction looks reversed? Flip this sequence 180° (#69)" hidden>↺ 180°</button>
+    <button type="button" id="pose-toggle" title="Horizon tilted or offset? Level this panorama (pitch / roll / yaw) (#98)" hidden>⌖ Level</button>
+    <div id="pose-panel" hidden>
+      <div class="pose-row">
+        <label for="pose-pitch">Pitch</label>
+        <input type="range" id="pose-pitch" min="-45" max="45" step="0.5" value="0" aria-label="Capture pitch correction (degrees)">
+        <span class="pose-val" id="pose-pitch-val">0°</span>
+      </div>
+      <div class="pose-row">
+        <label for="pose-roll">Roll</label>
+        <input type="range" id="pose-roll" min="-45" max="45" step="0.5" value="0" aria-label="Capture roll correction (degrees)">
+        <span class="pose-val" id="pose-roll-val">0°</span>
+      </div>
+      <div class="pose-row">
+        <label for="pose-yaw">Yaw</label>
+        <input type="range" id="pose-yaw" min="-180" max="180" step="1" value="0" aria-label="Image-centre yaw offset from GPS direction (degrees)">
+        <span class="pose-val" id="pose-yaw-val">0°</span>
+      </div>
+      <div class="pose-actions">
+        <button type="button" id="pose-reset">Reset</button>
+        <button type="button" id="pose-save">Save to Panoramax</button>
+      </div>
+      <input type="password" id="pose-token" placeholder="Panoramax API token (kept for this session only)" autocomplete="new-password">
+      <div id="pose-status">Adjustments apply live and persist in this browser. With a token they are written back to Panoramax — fixed for everyone.</div>
+    </div>
     <canvas id="minimap" width="132" height="132" hidden></canvas>
     <div id="blend-control" hidden>
       <label for="blend">Photo ↔ Vector</label>

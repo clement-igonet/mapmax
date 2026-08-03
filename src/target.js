@@ -14,6 +14,9 @@ export function pictureToTarget(pic, preferHd = false) {
     imageUrl,
     bearing,
     panoYaw: (bearing + (pic.yawOffset || 0)) % 360,
+    // Capture pose to undo in the shader (#98): localStorage/exif-resolved.
+    panoPitch: pic.posePitch || 0,
+    panoRoll: pic.poseRoll || 0,
   };
 }
 

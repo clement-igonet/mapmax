@@ -57,6 +57,21 @@ export function posePatchRequest(apiBase, collectionId, itemId, pose, token) {
   };
 }
 
+// The API base of the item's HOME instance. Items are read via the federated
+// meta-catalog (api.panoramax.xyz) whose self links stay on the catalog and
+// which refuses PATCH (405) — the `via` link carries the owning instance
+// (e.g. https://panoramax.openstreetmap.fr), where the write-back must go.
+export function apiBaseFromSelfHref(href) {
+  const m = typeof href === 'string' ? href.match(/^(.*?)\/collections\//) : null;
+  return m ? m[1] : null;
+}
+
+export function homeApiBase(links, selfHref) {
+  const via = (links || []).find((l) => l && l.rel === 'via' && typeof l.href === 'string');
+  if (via) return `${via.href.replace(/\/+$/, '')}/api`;
+  return apiBaseFromSelfHref(selfHref);
+}
+
 // Capture pose from a STAC item's exif, when the camera wrote one (GoPro Max
 // & co. write PosePitchDegrees = 0.0 regardless — hence the manual corrector).
 export function readPoseFromExif(exif) {

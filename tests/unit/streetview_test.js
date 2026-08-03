@@ -15,6 +15,8 @@ Deno.test('pictureToTarget: default prefers SD for snappy stepping', () => {
     imageUrl: 'sd.jpg',
     bearing: 208,
     panoYaw: 208, // no yawOffset → image centre assumed at the heading
+    panoPitch: 0, // no resolved pose → level capture assumed (#98)
+    panoRoll: 0,
   });
 });
 
@@ -28,12 +30,20 @@ Deno.test('pictureToTarget: sun-compass yawOffset rotates panoYaw, not bearing (
   assertEquals(t.panoYaw, 28); // image centre really faces heading+180
 });
 
+Deno.test('pictureToTarget: resolved capture pose is passed to the plugin (#98)', () => {
+  const t = pictureToTarget({ ...pic, posePitch: -4.5, poseRoll: 2 });
+  assertEquals(t.panoPitch, -4.5);
+  assertEquals(t.panoRoll, 2);
+});
+
 Deno.test('pictureToTarget: falls back through sd → thumb, heading defaults to 0', () => {
   assertEquals(pictureToTarget({ lon: 1, lat: 2, assets: { thumb: 't.jpg' } }), {
     lngLat: [1, 2],
     imageUrl: 't.jpg',
     bearing: 0,
     panoYaw: 0,
+    panoPitch: 0,
+    panoRoll: 0,
   });
 });
 

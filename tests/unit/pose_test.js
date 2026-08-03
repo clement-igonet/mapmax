@@ -2,8 +2,10 @@
 // request builder, and the world→camera pose matrix the shader consumes.
 import { assertEquals, assertThrows, assertAlmostEquals } from 'jsr:@std/assert@1';
 import {
+  apiBaseFromSelfHref,
   buildPosePatch,
   clampPose,
+  homeApiBase,
   normalizeYaw,
   panoPoseMatrix,
   posePatchRequest,
@@ -59,6 +61,29 @@ Deno.test('posePatchRequest: token required; empty pose → null (skip request)'
   assertThrows(() => posePatchRequest('https://x/api', 'c', 'i', { pitch: 1 }, ''));
   assertThrows(() => posePatchRequest('https://x/api', '', 'i', { pitch: 1 }, 't'));
   assertEquals(posePatchRequest('https://x/api', 'c', 'i', {}, 't'), null);
+});
+
+// --- Home instance ----------------------------------------------------------
+// Items are read via the federated meta-catalog, which refuses PATCH (405);
+// the write-back must target the owning instance from the `via` link.
+
+Deno.test('homeApiBase: prefers the via link (the owning instance)', () => {
+  const links = [
+    { rel: 'self', href: 'https://api.panoramax.xyz/api/collections/c1/items/i1' },
+    { rel: 'via', href: 'https://panoramax.openstreetmap.fr' },
+  ];
+  assertEquals(homeApiBase(links, links[0].href), 'https://panoramax.openstreetmap.fr/api');
+});
+
+Deno.test('homeApiBase: no via link → derived from the self href', () => {
+  const self = 'https://panoramax.ign.fr/api/collections/c1/items/i1';
+  assertEquals(homeApiBase([], self), 'https://panoramax.ign.fr/api');
+  assertEquals(homeApiBase(undefined, self), 'https://panoramax.ign.fr/api');
+});
+
+Deno.test('apiBaseFromSelfHref: null on garbage', () => {
+  assertEquals(apiBaseFromSelfHref(undefined), null);
+  assertEquals(apiBaseFromSelfHref('not a url'), null);
 });
 
 // --- Exif pose --------------------------------------------------------------
