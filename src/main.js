@@ -1,7 +1,8 @@
 // MapMax entry point — MapLibre map (OSM ground + 3D buildings) with immersive
 // Panoramax photospheres via the vendored maplibre-gl-photosphere plugin.
 import * as maplibregl from 'maplibre-gl';
-import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH } from './config.js';
+import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M } from './config.js';
+import { buildingRadiusFilter } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { _photosphere, enterStreetView, exitStreetView, flipCurrentPano, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
@@ -291,4 +292,23 @@ function setBuildingsGate(minz) {
     try { map.setLayerZoomRange(l.id, minz, 24); } catch { /* ignore */ }
   }
 }
-onPictureChanged((pic) => setBuildingsGate(pic ? STREET_BUILDINGS_MIN_ZOOM : BUILDINGS_MIN_ZOOM));
+
+// Clip 3D buildings to a radius around the standpoint in street mode (#95, see
+// STREET_BUILDINGS_RADIUS_M). `center` null (map mode) restores each layer's
+// original filter. The filter builder is pure and unit-tested (buildings.js).
+const origBuildingFilter = new Map();
+function setBuildingsRadius(center) {
+  for (const l of map.getStyle().layers) {
+    if (l.type !== 'fill-extrusion') continue;
+    if (!origBuildingFilter.has(l.id)) origBuildingFilter.set(l.id, map.getFilter(l.id) ?? null);
+    const orig = origBuildingFilter.get(l.id);
+    try {
+      map.setFilter(l.id, center ? buildingRadiusFilter(orig, center.lng, center.lat, STREET_BUILDINGS_RADIUS_M) : orig);
+    } catch { /* ignore */ }
+  }
+}
+
+onPictureChanged((pic) => {
+  setBuildingsGate(pic ? STREET_BUILDINGS_MIN_ZOOM : BUILDINGS_MIN_ZOOM);
+  setBuildingsRadius(pic ? { lng: pic.lon, lat: pic.lat } : null);
+});
