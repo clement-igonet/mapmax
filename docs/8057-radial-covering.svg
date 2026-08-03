@@ -31,7 +31,7 @@
 
   <!-- ============ RIGHT: proposed (position-only radial disk) ============ -->
   <text x="480" y="34" font-size="18" font-weight="700" fill="#24292f">Proposed — position-only LOD field</text>
-  <text x="480" y="56" font-size="13" fill="#57606a">zoom = f(distance to CAMERA), independent of look; load only the view slice</text>
+  <text x="480" y="56" font-size="13" fill="#57606a">zoom = f(distance to CAMERA), independent of look direction</text>
 
   <g transform="translate(690,240)">
     <!-- concentric LOD rings: inner = high zoom (fine), outer = low zoom (coarse) -->
