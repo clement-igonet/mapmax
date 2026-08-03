@@ -1,7 +1,7 @@
 // MapMax entry point — MapLibre map (OSM ground + 3D buildings) with immersive
 // Panoramax photospheres via the vendored maplibre-gl-photosphere plugin.
 import * as maplibregl from 'maplibre-gl';
-import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M } from './config.js';
+import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, STREET_DEFAULT_BLEND } from './config.js';
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
@@ -217,7 +217,9 @@ const leaveStreetUI = () => {
   document.getElementById('blend-control').hidden = true;
   document.getElementById('minimap').hidden = true;
   document.getElementById('flip-pano').hidden = true;
-  blendSlider.value = '100';
+  // Back to the 50/50 default for the next entry (#101) — streetview.js resets
+  // its remembered blend on exit to match.
+  blendSlider.value = String(STREET_DEFAULT_BLEND * 100);
   status('Zoom in and click a Panoramax picture dot.');
 };
 

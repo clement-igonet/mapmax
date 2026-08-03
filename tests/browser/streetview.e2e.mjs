@@ -258,6 +258,11 @@ const nav = await page.evaluate(async () => {
   // zoom, so exclude them from the "blend reveals OSM" count to keep it stable.
   const panoramaxTiled = tiled.filter((id) => tiledLayerIds(map.getStyle()).includes(id) && !tiledLayerIds(map.getStyle(), ['panoramax']).includes(id));
   const osmTiled = tiledLayerIds(map.getStyle(), ['panoramax']).filter((id) => map.getLayer(id)?.type !== 'fill-extrusion');
+  // #101: entry defaults to a 50/50 mix — captured BEFORE the e2e touches the
+  // blend: photo opacity 0.5, slider at 50, OSM already revealed (hiddenInside
+  // above therefore counts only the suspended Panoramax tiles).
+  const defaultBlend = sv._photosphere()?._blend;
+  const defaultSlider = document.getElementById('blend').value;
   sv.setBlend(sliderToBlend(50));
   const osmVisibleAtMixed = osmTiled.filter((id) => map.getLayer(id) &&
     map.getLayoutProperty(id, 'visibility') !== 'none').length;
@@ -293,7 +298,7 @@ const nav = await page.evaluate(async () => {
   return { skipped: false, enteredMode, inStreet, exitedMode: sv._photosphere()?.mode,
            tiledCount: tiled.length, hiddenInside, visibleAfter,
            osmTiledCount: osmTiled.length, panoramaxTiledCount: panoramaxTiled.length,
-           osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside,
+           osmVisibleAtMixed, panoramaxHiddenAtMixed, hiddenBackToPhoto, blendInside, defaultBlend, defaultSlider,
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside, smoothWalk, walkMixSeen,
            panoYawApplied, walkPanoYawApplied, urlPicOnEnter, deepLinkId, urlPicAfterExit,
@@ -309,7 +314,12 @@ if (nav.skipped) {
   assert.ok(['entering', 'inside'].includes(nav.enteredMode), `unexpected mode ${nav.enteredMode}`);
   assert.equal(nav.exitedMode, 'outside', 'photosphere did not exit back to map');
   assert.ok(nav.tiledCount > 0, 'expected some tiled layers');
-  assert.equal(nav.hiddenInside, nav.tiledCount, `tiled layers not suspended inside (#11): ${nav.hiddenInside}/${nav.tiledCount}`);
+  // #101: at the 50/50 entry default the OSM layers are already revealed; only
+  // the Panoramax tiles stay suspended (#27). The full #11 suspension is
+  // asserted at blend 100% below (hiddenBackToPhoto).
+  assert.equal(nav.hiddenInside, nav.panoramaxTiledCount, `at the 50/50 default only Panoramax tiles stay suspended (#101/#27): ${nav.hiddenInside}/${nav.panoramaxTiledCount}`);
+  assert.equal(nav.defaultBlend, 0.5, `entry must default to a 50/50 mix, got blend ${nav.defaultBlend} (#101)`);
+  assert.equal(nav.defaultSlider, '50', `blend slider must read 50 on entry, got ${nav.defaultSlider} (#101)`);
   assert.equal(nav.visibleAfter, nav.tiledCount, 'tiled layers not restored after exit (#11)');
   assert.equal(nav.osmVisibleAtMixed, nav.osmTiledCount, `blend 50% did not reveal OSM vector layers (#6)`);
   assert.ok(nav.panoramaxTiledCount > 0, 'expected Panoramax tiled layers');
