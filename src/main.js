@@ -303,7 +303,10 @@ let buildingsRadiusM = parseRadiusOverride(location.search, STREET_BUILDINGS_RAD
 let buildingsStandpoint = null;
 const origBuildingFilter = new Map();
 function setBuildingsRadius(center) {
-  const clip = buildingsClipOn && center && buildingsRadiusM > 0;
+  // Off on www (and in e2e): never touch layer filters — calling setFilter
+  // re-validates the style and surfaces latent warnings from other layers (#95).
+  if (!buildingsClipOn) return;
+  const clip = center && buildingsRadiusM > 0;
   for (const l of map.getStyle().layers) {
     if (l.type !== 'fill-extrusion') continue;
     if (!origBuildingFilter.has(l.id)) origBuildingFilter.set(l.id, map.getFilter(l.id) ?? null);
