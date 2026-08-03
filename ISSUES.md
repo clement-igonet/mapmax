@@ -10,8 +10,9 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | PR(s) | State |
 |---|---|---|---|
-| [#98](https://github.com/clement-igonet/mapmax/issues/98) | Pose corrector (pitch/roll/yaw) + Panoramax PATCH write-back | [#100](https://github.com/clement-igonet/mapmax/pull/100) (draft) | implemented; unit 109 ✓ + containerized e2e ✓; awaiting human visual check of correction signs |
-| [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; next: `firstPersonLod` radial covering (spec posted to [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057)) |
+| [#98](https://github.com/clement-igonet/mapmax/issues/98) | Pose corrector (pitch/roll/yaw) + Panoramax PATCH write-back | [#100](https://github.com/clement-igonet/mapmax/pull/100) (draft) | implemented; unit 109 ✓ + containerized e2e ✓; **branch build live on [sandbox](https://sandbox.mapmax.confinia.io) for the visual check** (until the next main deploy rebuilds it) |
+| [#103](https://github.com/clement-igonet/mapmax/issues/103) | Adopt stock MapLibre ≥ v6.20 (with #8057) on all envs | — | promotion path decided; **blocked upstream** (latest v6.1.0, [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) open) |
+| [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); branch-deploy flow still manual |
 
 ## Backlog (open, not started)
