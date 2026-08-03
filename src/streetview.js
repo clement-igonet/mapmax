@@ -2,7 +2,7 @@
 // One Photosphere instance is reused for the whole session: enter() steps into
 // a clicked picture, goTo() walks to an adjacent one (SPECIFICATIONS.md §2.2–2.5).
 import { Photosphere } from './vendor/photosphere-plugin.js';
-import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH } from './config.js';
+import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH, STREET_DEFAULT_BLEND } from './config.js';
 import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
@@ -106,6 +106,9 @@ export async function enterStreetView(map, pic) {
         // Ground + sky backdrop so the vector-only view is never a raw-white
         // void (#37).
         applyStreetBackdrop(map);
+        // Start mixed, not photo-only (#101): applied here (after the suspend
+        // above) so the default 50/50 actually reveals the OSM layers.
+        setBlend(currentBlend);
         // Honor an exit requested during the enter animation (e.g. Esc mid-entry).
         if (pendingExit) {
           pendingExit = false;
@@ -116,6 +119,9 @@ export async function enterStreetView(map, pic) {
         document.body.classList.remove('street-mode');
         removeStreetBackdrop(map);
         try { map.setMaxPitch(MAP_MAX_PITCH); } catch { /* ignore */ }
+        // Next entry starts at the default mix again — matches the slider
+        // reset in main.js leaveStreetUI (#101).
+        currentBlend = STREET_DEFAULT_BLEND;
         current = null;
         emit(null);
       },
@@ -137,7 +143,10 @@ export async function enterStreetView(map, pic) {
 
 // Vector/photo blend (#6): alpha 1 = photo only (tiles suspended for #11),
 // alpha < 1 reveals the vector layers behind the semi-transparent photo.
+// Defaults to 50/50 on entry (#101); onEnter re-applies the remembered value.
+let currentBlend = STREET_DEFAULT_BLEND;
 export function setBlend(alpha) {
+  currentBlend = alpha;
   if (!photosphere || !svMap) return;
   photosphere.blend(alpha);
   if (alpha >= 0.99) suspendTileLayers(svMap);
