@@ -34,6 +34,15 @@ export const MAP_MIN_PITCH_CAP = 20;
 // around the current photosphere — keeps the scene light and POIs nearby (#27).
 export const STREET_POI_RADIUS_M = 50;
 
+// In street mode, only RENDER 3D buildings within this radius (meters) of the
+// standpoint. Far buildings are where the pitch-90 instability lives: a dense
+// z14 tile's fill-extrusion bucket overflows MapLibre's 65535-vertex/segment
+// limit and gets dropped, and the horizon-grazing frustum culls far tiles in and
+// out — both show as buildings blinking. A radius clip keeps buckets small (no
+// overflow) and depends only on POSITION, so looking around never changes the
+// set. Applied via a `within` filter, refreshed on each standpoint change.
+export const STREET_BUILDINGS_RADIUS_M = 240;
+
 // Photosphere plugin defaults (SPECIFICATIONS.md §2.2, §2.5).
 // fov 80: at eye height the 75° view left the near foreground unrendered by
 // MapLibre (an empty band, #43); 80° tilts the bottom edge down enough for the
