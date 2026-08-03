@@ -10,7 +10,6 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | PR(s) | State |
 |---|---|---|---|
-| [#101](https://github.com/clement-igonet/mapmax/issues/101) | Default Photo ↔ Vector blend to 50%/50% | [#102](https://github.com/clement-igonet/mapmax/pull/102) (draft) | implemented (config const + entry apply + slider 50); unit ✓; e2e updated (only Panoramax suspended at default) |
 | [#98](https://github.com/clement-igonet/mapmax/issues/98) | Pose corrector (pitch/roll/yaw) + Panoramax PATCH write-back | [#100](https://github.com/clement-igonet/mapmax/pull/100) (draft) | implemented; unit 109 ✓ + containerized e2e ✓; awaiting human visual check of correction signs |
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; next: `firstPersonLod` radial covering (spec posted to [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057)) |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); branch-deploy flow still manual |
@@ -33,5 +32,6 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Resolution |
 |---|---|---|
+| [#101](https://github.com/clement-igonet/mapmax/issues/101) | Default Photo ↔ Vector blend to 50%/50% | [#102](https://github.com/clement-igonet/mapmax/pull/102) merged; unit + containerized e2e green; deployed via CI; closed 2026-08-03 |
 | [#95](https://github.com/clement-igonet/mapmax/issues/95) | Street building radius clip (pitch-90 stability) | [#96](https://github.com/clement-igonet/mapmax/pull/96) + [#97](https://github.com/clement-igonet/mapmax/pull/97) + [#99](https://github.com/clement-igonet/mapmax/pull/99); live on all envs; closed 2026-08-03 |
 | [#91](https://github.com/clement-igonet/mapmax/issues/91) | Prototype #8057 locally (pre-code validation) | realized via #94's sandbox build; closed 2026-08-03 |
