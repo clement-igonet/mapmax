@@ -40,8 +40,9 @@ export const STREET_POI_RADIUS_M = 50;
 // segment limit (dropped), and the horizon-grazing frustum culls far tiles in
 // and out — both show as buildings blinking. A radius clip keeps buckets small
 // (no overflow) and depends only on POSITION, so looking around never re-clips.
-// Default kept tight; live-tunable via ?buildingsRadius=<m> or the console setter.
-export const STREET_BUILDINGS_RADIUS_M = 50;
+// 150 m compromise (50 m clipped real façades on open squares; 240 m brought
+// back the far blink); live-tunable via ?buildingsRadius=<m> or the console setter.
+export const STREET_BUILDINGS_RADIUS_M = 150;
 
 // Photosphere plugin defaults (SPECIFICATIONS.md §2.2, §2.5).
 // fov 80: at eye height the 75° view left the near foreground unrendered by
