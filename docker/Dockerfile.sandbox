@@ -16,4 +16,8 @@ COPY tools/ /usr/share/nginx/html/tools/
 COPY vendor/maplibre-8057/maplibre-gl.mjs vendor/maplibre-8057/maplibre-gl-shared.mjs vendor/maplibre-8057/maplibre-gl-worker.mjs vendor/maplibre-8057/maplibre-gl.css /usr/share/nginx/html/vendor/maplibre/
 COPY docker/default.conf /etc/nginx/conf.d/default.conf
 
+# Deployment env = sandbox (#95 stack split): drives feature gating (env.js).
+ARG MAPMAX_ENV=sandbox
+RUN printf "export const MAPMAX_ENV = '%s';\n" "$MAPMAX_ENV" > /usr/share/nginx/html/src/env.js
+
 EXPOSE 80

@@ -12,7 +12,7 @@
 #   systemctl --user daemon-reload && systemctl --user enable --now mapmax-stack.service
 # Deploys just: systemctl --user restart mapmax-stack.service (see deploy-confinia.sh).
 [Unit]
-Description=MapMax podman-compose stack (edge+web+web-sandbox)
+Description=MapMax podman-compose stack (edge+web+web-staging+web-sandbox)
 After=default.target
 
 [Service]
@@ -21,7 +21,7 @@ WorkingDirectory=%h/projects/mapmax
 Environment=WEB_PORT=8087
 Environment=XDG_RUNTIME_DIR=/run/user/1002
 ExecStartPre=-/usr/bin/podman-compose down
-ExecStart=/usr/bin/podman-compose up edge web web-sandbox
+ExecStart=/usr/bin/podman-compose up edge web web-staging web-sandbox
 ExecStop=/usr/bin/podman-compose down
 Restart=always
 RestartSec=5

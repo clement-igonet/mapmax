@@ -1,6 +1,6 @@
 // Unit tests for the street-mode 3D-building radius clip (#95).
 import { assertEquals } from 'jsr:@std/assert@1';
-import { buildingRadiusFilter, isSandboxHost, parseRadiusOverride } from '../../src/buildings.js';
+import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from '../../src/buildings.js';
 
 Deno.test('buildingRadiusFilter: no original filter → a bare distance filter', () => {
   const f = buildingRadiusFilter(null, 2.35, 48.85, 240);
@@ -28,12 +28,12 @@ Deno.test('buildingRadiusFilter: uses distance (not within), so tile-clipped pol
   assertEquals(f[1][0], 'distance');
 });
 
-Deno.test('isSandboxHost: sandbox host or ?sandbox=1, never www', () => {
-  const H = 'sandbox.mapmax.confinia.io';
-  assertEquals(isSandboxHost('sandbox.mapmax.confinia.io', '', H), true);
-  assertEquals(isSandboxHost('www.mapmax.confinia.io', '', H), false);
-  assertEquals(isSandboxHost('localhost', '?sandbox=1', H), true);
-  assertEquals(isSandboxHost('www.mapmax.confinia.io', '?foo=1', H), false);
+Deno.test('buildingsClipEnabled: staging + sandbox on, prod off (unless ?sandbox=1)', () => {
+  assertEquals(buildingsClipEnabled('staging', ''), true);
+  assertEquals(buildingsClipEnabled('sandbox', ''), true);
+  assertEquals(buildingsClipEnabled('prod', ''), false);
+  assertEquals(buildingsClipEnabled('prod', '?sandbox=1'), true); // dev/e2e override
+  assertEquals(buildingsClipEnabled('prod', '?foo=1'), false);
 });
 
 Deno.test('parseRadiusOverride: reads ?buildingsRadius, honours 0, falls back otherwise', () => {

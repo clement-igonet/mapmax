@@ -25,7 +25,7 @@ echo "::endgroup::"
 echo "::group::build + restart stack (systemd-managed)"
 cd "$DEST"
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-WEB_PORT="$PORT" podman-compose build web web-sandbox
+WEB_PORT="$PORT" podman-compose build web web-staging web-sandbox
 # The stack runs as a persistent systemd user service (mapmax-stack.service, on
 # the VM) so the rootless port-forwarder is owned by SYSTEMD, not this deploy job.
 # `podman-compose up -d` from a CI job/SSH leaves the forwarder in the caller's

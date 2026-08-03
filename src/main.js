@@ -1,8 +1,9 @@
 // MapMax entry point — MapLibre map (OSM ground + 3D buildings) with immersive
 // Panoramax photospheres via the vendored maplibre-gl-photosphere plugin.
 import * as maplibregl from 'maplibre-gl';
-import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, POLAR } from './config.js';
-import { buildingRadiusFilter, isSandboxHost, parseRadiusOverride } from './buildings.js';
+import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M } from './config.js';
+import { MAPMAX_ENV } from './env.js';
+import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { _photosphere, enterStreetView, exitStreetView, flipCurrentPano, isStreetMode, onPictureChanged, setBlend } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
@@ -293,12 +294,12 @@ function setBuildingsGate(minz) {
   }
 }
 
-// Clip 3D buildings to a radius around the standpoint in street mode (#95). A
-// SANDBOX-ONLY experiment for now (off on www), so we can tune it live: the radius
-// is runtime-variable — ?buildingsRadius=<m> in the URL, or window.setBuildingsRadius(m)
-// in the console; 0 disables. `center` null (map mode) restores each layer's
-// original filter. The filter builder is pure and unit-tested (buildings.js).
-const buildingsClipOn = isSandboxHost(location.hostname, location.search, POLAR.gatedHost);
+// Clip 3D buildings to a radius around the standpoint in street mode (#95).
+// Enabled on the `staging` and `sandbox` envs, off on prod (env.js / the split);
+// the radius is runtime-variable — ?buildingsRadius=<m> in the URL, or
+// window.setBuildingsRadius(m) in the console; 0 disables. `center` null (map
+// mode) restores each layer's original filter. Filter builder is unit-tested.
+const buildingsClipOn = buildingsClipEnabled(MAPMAX_ENV, location.search);
 let buildingsRadiusM = parseRadiusOverride(location.search, STREET_BUILDINGS_RADIUS_M);
 let buildingsStandpoint = null;
 const origBuildingFilter = new Map();

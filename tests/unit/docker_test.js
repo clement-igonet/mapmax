@@ -47,6 +47,16 @@ Deno.test('docker-compose.yml isolates the sandbox web service', async () => {
   assert(dc.includes('web-sandbox:'), 'web-sandbox service missing');
 });
 
+Deno.test('stack is split into prod / staging / sandbox, env baked per image (#95)', async () => {
+  const dc = await read('docker-compose.yml');
+  assert(dc.includes('web-staging:'), 'web-staging service missing');
+  assert(/MAPMAX_ENV:\s*staging/.test(dc), 'web-staging must build with MAPMAX_ENV=staging');
+  const cf = await read('docker/Caddyfile');
+  assert(cf.includes('reverse_proxy web-staging:80'), 'staging host must route to web-staging');
+  const df = await read('Dockerfile');
+  assert(df.includes('MAPMAX_ENV'), 'base Dockerfile must bake MAPMAX_ENV into env.js');
+});
+
 Deno.test('browser e2e image runs Chromium (playwright) against the web service', async () => {
   const df = await read('tests/browser/Dockerfile');
   assert(df.includes('playwright'), 'playwright base image expected');

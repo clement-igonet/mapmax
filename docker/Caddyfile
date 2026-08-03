@@ -12,7 +12,8 @@
 #                                 playground for paid/advanced features; will be
 #                                 entitlement-gated via polar.sh, basic-auth in
 #                                 the meantime)
-#   staging.mapmax.confinia.io  → web          (point at a web-staging later)
+#   staging.mapmax.confinia.io  → web-staging  (pre-prod validator; candidate
+#                                 features on via MAPMAX_ENV=staging, e.g. #95)
 #   anything else (dev/e2e)     → web
 {
 	auto_https off
@@ -36,7 +37,7 @@
 
 	@staging host staging.mapmax.confinia.io
 	handle @staging {
-		reverse_proxy web:80
+		reverse_proxy web-staging:80
 	}
 
 	# Default (localhost:8087 during dev, container-network access).
