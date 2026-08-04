@@ -451,6 +451,13 @@ if (nav.skipped) {
   });
   assert.ok(pose.visible, 'pose leveller button not visible in street mode (#98)');
   assert.ok(pose.panelOpen, 'pose panel did not open (#98)');
+  // #104: the Connect button is present in the open panel (the OAuth claim
+  // dance itself can't run in CI — its request builders are unit-tested).
+  const connectPresent = await page.evaluate(() => {
+    const b = document.getElementById('pose-connect');
+    return !!b && !b.disabled && /connect/i.test(b.textContent);
+  });
+  assert.ok(connectPresent, 'Connect to Panoramax button missing from the pose panel (#104)');
   assert.equal(pose.before.pitch, 0, 'pose pitch should start at the metadata value (#98)');
   assert.equal(pose.after.pitch, -6, 'pitch slider not live-applied to the shader pose (#98)');
   assert.equal(pose.after.roll, 3, 'roll slider not live-applied to the shader pose (#98)');

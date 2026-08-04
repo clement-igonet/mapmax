@@ -6,6 +6,7 @@ import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { _photosphere, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose } from './streetview.js';
+import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, TOKEN_KEY } from './panoramaxauth.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -270,12 +271,68 @@ function syncPosePanel() {
 }
 onPictureChanged(() => syncPosePanel());
 
+// Token lookup for the CURRENT picture's home instance — tokens are only valid
+// on the instance that issued them, so they're stored per instance (#104). The
+// un-keyed legacy entry is kept as a read fallback.
+const storedToken = () => {
+  const home = currentPicture()?.homeApi;
+  return (home && sessionStorage.getItem(TOKEN_KEY(home))) || sessionStorage.getItem('mapmax:panoramax-token') || '';
+};
+
 document.getElementById('pose-toggle').addEventListener('click', () => {
   posePanel.hidden = !posePanel.hidden;
   if (!posePanel.hidden) {
-    poseTokenInput.value = sessionStorage.getItem('mapmax:panoramax-token') || '';
+    poseTokenInput.value = storedToken();
     poseStatus.textContent = POSE_STATUS_DEFAULT;
     syncPosePanel();
+  }
+});
+
+// "Connect to Panoramax" (#104): generate an unclaimed token on the picture's
+// home instance, open its claim URL (the instance's OAuth / OSM login) in a new
+// tab, and poll users/me with the JWT until the account binds it.
+const poseConnectBtn = document.getElementById('pose-connect');
+poseConnectBtn.addEventListener('click', async () => {
+  const home = currentPicture()?.homeApi;
+  if (!home) {
+    poseStatus.textContent = 'Unknown home instance for this picture — paste a token instead.';
+    return;
+  }
+  // Open the tab synchronously (inside the click) so popup blockers allow it.
+  const claimTab = window.open('', '_blank');
+  poseConnectBtn.disabled = true;
+  try {
+    const gen = tokenGenerateRequest(home);
+    const res = await fetch(gen.url, gen.init);
+    const parsed = parseGeneratedToken(await res.json());
+    if (!parsed) throw new Error(`no claimable token from ${home}`);
+    if (claimTab) claimTab.location = parsed.claimUrl;
+    else {
+      // Popup blocked: hand the claim URL to the help link instead.
+      const help = document.getElementById('pose-token-help');
+      help.href = parsed.claimUrl;
+      help.textContent = 'Pop-up blocked — open the sign-in page manually ↗';
+    }
+    poseStatus.textContent = 'Sign in with your OpenStreetMap account in the opened tab — waiting for the connection…';
+    for (const delay of claimPollDelays()) {
+      await new Promise((r) => setTimeout(r, delay));
+      if (posePanel.hidden) return; // panel closed — stop polling quietly
+      const who = whoAmIRequest(home, parsed.jwt);
+      const meRes = await fetch(who.url, who.init).catch(() => null);
+      if (meRes?.ok) {
+        const me = await meRes.json().catch(() => ({}));
+        sessionStorage.setItem(TOKEN_KEY(home), parsed.jwt); // session only
+        poseTokenInput.value = parsed.jwt;
+        poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
+        return;
+      }
+    }
+    poseStatus.textContent = 'Sign-in not completed in time — try Connect again, or paste a token.';
+  } catch (err) {
+    if (claimTab) claimTab.close();
+    poseStatus.textContent = `Connect failed: ${err?.message || 'network error'}. You can paste a token instead.`;
+  } finally {
+    poseConnectBtn.disabled = false;
   }
 });
 
@@ -296,10 +353,11 @@ document.getElementById('pose-reset').addEventListener('click', () => {
 document.getElementById('pose-save').addEventListener('click', async () => {
   const token = poseTokenInput.value.trim();
   if (!token) {
-    poseStatus.textContent = 'No token — the correction stays in this browser only. Paste a Panoramax API token to fix it at the source.';
+    poseStatus.textContent = 'No token — the correction stays in this browser only. Use Connect, or paste a Panoramax API token, to fix it at the source.';
     return;
   }
-  sessionStorage.setItem('mapmax:panoramax-token', token); // session only — never persisted
+  const home = currentPicture()?.homeApi;
+  sessionStorage.setItem(home ? TOKEN_KEY(home) : 'mapmax:panoramax-token', token); // session only — never persisted
   poseStatus.textContent = 'Saving pose to Panoramax…';
   const res = await savePoseToPanoramax(token);
   poseStatus.textContent = res.ok
