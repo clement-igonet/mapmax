@@ -216,6 +216,11 @@ body {
   line-height: 1.4;
 }
 
+#pose-token-help {
+  color: #7ab8ff;
+  font-size: 12px;
+}
+
 #minimap {
   position: absolute;
   bottom: 24px;

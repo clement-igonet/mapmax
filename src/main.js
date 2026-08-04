@@ -5,7 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M } f
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose } from './streetview.js';
+import { _photosphere, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -261,6 +261,10 @@ function syncPosePanel() {
   poseSliders.roll.value = String(pose.roll);
   poseSliders.yaw.value = String(yawToSlider(pose.yaw));
   for (const k of ['pitch', 'roll', 'yaw']) poseVals[k].textContent = `${poseSliders[k].value}°`;
+  // Token help goes to the CURRENT picture's home instance (that's where the
+  // PATCH lands): sign in there, then this endpoint lists your tokens.
+  const home = currentPicture()?.homeApi;
+  if (home) document.getElementById('pose-token-help').href = `${home}/users/me/tokens`;
 }
 onPictureChanged(() => syncPosePanel());
 
