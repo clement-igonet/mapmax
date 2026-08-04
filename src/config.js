@@ -44,6 +44,11 @@ export const STREET_POI_RADIUS_M = 50;
 // back the far blink); live-tunable via ?buildingsRadius=<m> or the console setter.
 export const STREET_BUILDINGS_RADIUS_M = 150;
 
+// Street-mode default photo↔vector blend (#101): enter mixed 50/50 so the
+// signature vector-in-photo blending is visible without touching the slider
+// (1 = photo only). The slider (index.html value="50") must match ×100.
+export const STREET_DEFAULT_BLEND = 0.5;
+
 // Photosphere plugin defaults (SPECIFICATIONS.md §2.2, §2.5).
 // fov 80: at eye height the 75° view left the near foreground unrendered by
 // MapLibre (an empty band, #43); 80° tilts the bottom edge down enough for the
