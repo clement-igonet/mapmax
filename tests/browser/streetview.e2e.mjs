@@ -421,6 +421,42 @@ if (nav.skipped) {
   assert.ok(manual.backTo0, 'second flip did not return to the original orientation (#69)');
   assert.ok(manual.overridden, 'flip override not persisted (#69)');
   console.log('[e2e] manual 180° flip button works & persists (#69) OK');
+
+  // #98 pose leveller: the panel opens from street mode, the sliders live-apply
+  // pitch/roll to the photosphere (shader pose), and the correction persists
+  // per sequence in localStorage (the anonymous fallback; the token path PATCHes
+  // Panoramax and is covered by unit tests on the request builder).
+  const pose = await page.evaluate(async () => {
+    const sv = await import('./src/streetview.js');
+    const toggle = document.getElementById('pose-toggle');
+    toggle.click();
+    const panelOpen = !document.getElementById('pose-panel').hidden;
+    const before = sv._photosphere().getPanoPose();
+    const pitchSlider = document.getElementById('pose-pitch');
+    pitchSlider.value = '-6';
+    pitchSlider.dispatchEvent(new Event('input'));
+    const rollSlider = document.getElementById('pose-roll');
+    rollSlider.value = '3';
+    rollSlider.dispatchEvent(new Event('input'));
+    const after = sv._photosphere().getPanoPose();
+    // Persistence is debounced (~250 ms) so drags don't hammer localStorage —
+    // wait for the flush before reading it back.
+    await new Promise((r) => setTimeout(r, 450));
+    const stored = Object.keys(localStorage).filter((k) => k.startsWith('mapmax:pose:'))
+      .map((k) => JSON.parse(localStorage.getItem(k)))[0];
+    // Reset so the leveller leaves no residue for later runs/assertions.
+    document.getElementById('pose-reset').click();
+    const reset = sv._photosphere().getPanoPose();
+    return { visible: !toggle.hidden, panelOpen, before, after, stored, reset };
+  });
+  assert.ok(pose.visible, 'pose leveller button not visible in street mode (#98)');
+  assert.ok(pose.panelOpen, 'pose panel did not open (#98)');
+  assert.equal(pose.before.pitch, 0, 'pose pitch should start at the metadata value (#98)');
+  assert.equal(pose.after.pitch, -6, 'pitch slider not live-applied to the shader pose (#98)');
+  assert.equal(pose.after.roll, 3, 'roll slider not live-applied to the shader pose (#98)');
+  assert.deepEqual({ pitch: pose.stored?.pitch, roll: pose.stored?.roll }, { pitch: -6, roll: 3 }, 'pose not persisted per sequence in localStorage (#98)');
+  assert.equal(pose.reset.pitch, 0, 'pose reset did not restore the metadata orientation (#98)');
+  console.log('[e2e] pose leveller live-applies pitch/roll & persists locally (#98) OK');
 }
 
 

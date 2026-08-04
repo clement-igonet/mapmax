@@ -8,6 +8,7 @@ import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 import { consensusVerdict, sunYawVerdict } from './sunflip.js';
 import { getSequence } from './panoramax.js';
+import { POSE_STORE_KEY, normalizeYaw, posePatchRequest } from './pose.js';
 
 export { pictureToTarget };
 
@@ -80,14 +81,100 @@ export function flipCurrentPano() {
   const next = ((current.yawOffset || 0) + 180) % 360;
   lsSet(OVERRIDE_KEY(key), String(next));
   current.yawOffset = next;
-  photosphere._panoYawDeg = ((current.heading || 0) + next) % 360;
-  svMap?.triggerRepaint();
+  photosphere.setPanoPose({ yaw: ((current.heading || 0) + next) % 360 });
   return next;
+}
+
+// --- Pose corrector (#98) ---------------------------------------------------
+// pitch/roll capture-pose per sequence: localStorage override wins, then the
+// camera-written exif pose (GoPro & co. write 0.0 regardless — hence the UI).
+function resolvePitchRoll(pic) {
+  const stored = lsGet(POSE_STORE_KEY(pic.sequenceId || pic.id));
+  if (stored != null) {
+    try {
+      const p = JSON.parse(stored);
+      return { pitch: +p.pitch || 0, roll: +p.roll || 0 };
+    } catch { /* fall through to exif */ }
+  }
+  return { pitch: pic.exifPose?.pitch || 0, roll: pic.exifPose?.roll || 0 };
+}
+
+// The pose as shown/edited in the UI: pitch/roll (capture tilt to undo) and
+// yaw = offset of the image centre from the GPS direction (the flip's unit).
+export function getCurrentPose() {
+  if (!current) return null;
+  return {
+    pitch: current.posePitch || 0,
+    roll: current.poseRoll || 0,
+    yaw: normalizeYaw(current.yawOffset || 0),
+  };
+}
+
+// Debounced pose persistence (#98): a slider drag fires dozens of input events
+// per second — a synchronous localStorage write on each contributes jank while
+// the canvas repaints. Apply live, persist once the drag settles.
+let poseSaveTimer = 0;
+let poseSavePending = null; // { key, pose, yaw } — yaw only once touched
+function flushPoseSave() {
+  clearTimeout(poseSaveTimer);
+  if (!poseSavePending) return;
+  const p = poseSavePending;
+  poseSavePending = null;
+  lsSet(POSE_STORE_KEY(p.key), p.pose);
+  if (p.yaw != null) lsSet(OVERRIDE_KEY(p.key), p.yaw);
+}
+
+// Live-apply + persist locally (anonymous fallback — write-back is separate).
+// Only the components provided change.
+export function setCurrentPose({ pitch, roll, yaw } = {}) {
+  if (!current || !photosphere) return null;
+  const key = current.sequenceId || current.id;
+  if (typeof pitch === 'number' && Number.isFinite(pitch)) current.posePitch = pitch;
+  if (typeof roll === 'number' && Number.isFinite(roll)) current.poseRoll = roll;
+  const yawTouched = typeof yaw === 'number' && Number.isFinite(yaw);
+  if (yawTouched) current.yawOffset = normalizeYaw(yaw);
+  poseSavePending = {
+    key,
+    pose: JSON.stringify({ pitch: current.posePitch || 0, roll: current.poseRoll || 0 }),
+    // Carry an earlier-touched yaw across the merge so a later pitch/roll tweak
+    // doesn't drop it; never write the yaw override unless the user set it.
+    yaw: yawTouched ? String(current.yawOffset)
+      : (poseSavePending && poseSavePending.key === key ? poseSavePending.yaw : null),
+  };
+  clearTimeout(poseSaveTimer);
+  poseSaveTimer = setTimeout(flushPoseSave, 250);
+  photosphere.setPanoPose({
+    yaw: normalizeYaw((current.heading || 0) + (current.yawOffset || 0)),
+    pitch: current.posePitch || 0,
+    roll: current.poseRoll || 0,
+  });
+  return getCurrentPose();
+}
+
+// Write the displayed pose back to the picture's HOME Panoramax instance
+// (PATCH, v2.14.0) with the user's token — fixed at the source, for every
+// viewer. The browser calls the API directly (front-end only, R3).
+export async function savePoseToPanoramax(token) {
+  if (!current) return { ok: false, error: 'not in a panorama' };
+  if (!current.homeApi) return { ok: false, error: 'unknown home instance for this picture' };
+  const req = posePatchRequest(current.homeApi, current.sequenceId, current.id, getCurrentPose(), token);
+  if (!req) return { ok: false, error: 'nothing to save' };
+  try {
+    const res = await fetch(req.url, req.init);
+    if (!res.ok) return { ok: false, status: res.status, error: `Panoramax answered ${res.status}` };
+    return { ok: true, status: res.status };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'network error (CORS?)' };
+  }
 }
 
 // Enter street view at `pic` (first click) or walk to it (already inside).
 export async function enterStreetView(map, pic) {
+  flushPoseSave(); // a still-pending pose write must land before we read the store (#98)
   pic.yawOffset = await resolveYawOffset(pic);
+  const pr = resolvePitchRoll(pic); // #98
+  pic.posePitch = pr.pitch;
+  pic.poseRoll = pr.roll;
   current = pic;
   svMap = map;
 
@@ -156,6 +243,7 @@ export function setBlend(alpha) {
 }
 
 export function exitStreetView() {
+  flushPoseSave(); // don't lose a tweak made just before Esc (#98)
   if (!photosphere) return;
   // Restore tiled layers before the exit animation so the map is there to
   // animate back onto (#11).

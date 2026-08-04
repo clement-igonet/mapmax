@@ -1,5 +1,6 @@
 // Panoramax API client + map layers (sequences and picture points).
 import { PANORAMAX_API } from './config.js';
+import { homeApiBase, readPoseFromExif } from './pose.js';
 
 export const SOURCE_ID = 'panoramax';
 export const SEQUENCES_LAYER = 'panoramax-sequences';
@@ -110,6 +111,10 @@ export function normalizeItem(f) {
     producer: p['geovisio:producer'],
     license: p.license,
     datetime: p.datetime,
+    // Pose corrector (#98): the owning instance's API (PATCH must not go to the
+    // read-only meta-catalog) and any camera-written capture pose.
+    homeApi: homeApiBase(links, (links.find((l) => l.rel === 'self') || {}).href),
+    exifPose: readPoseFromExif(p.exif),
   };
 }
 
