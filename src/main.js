@@ -293,14 +293,25 @@ document.getElementById('pose-toggle').addEventListener('click', () => {
 // tab, and poll users/me with the JWT until the account binds it.
 const poseConnectBtn = document.getElementById('pose-connect');
 poseConnectBtn.addEventListener('click', async () => {
-  const home = currentPicture()?.homeApi;
-  if (!home) {
-    poseStatus.textContent = 'Unknown home instance for this picture — paste a token instead.';
+  const pic = currentPicture();
+  if (!pic) {
+    poseStatus.textContent = 'Enter a 360° panorama first — the connection targets the instance that hosts the current picture.';
     return;
   }
   // Open the tab synchronously (inside the click) so popup blockers allow it.
   const claimTab = window.open('', '_blank');
   poseConnectBtn.disabled = true;
+  let home = pic.homeApi;
+  if (!home) {
+    // Some fetch paths can miss the `via` link — refetch the item for it.
+    try { home = (await getPicture(pic.id))?.homeApi; } catch { /* handled below */ }
+  }
+  if (!home) {
+    if (claimTab) claimTab.close();
+    poseConnectBtn.disabled = false;
+    poseStatus.textContent = 'Unknown home instance for this picture — paste a token instead.';
+    return;
+  }
   try {
     const gen = tokenGenerateRequest(home);
     const res = await fetch(gen.url, gen.init);
