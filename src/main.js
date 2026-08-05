@@ -226,6 +226,10 @@ const leaveStreetUI = () => {
   blendSlider.value = String(STREET_DEFAULT_BLEND * 100);
   status('Zoom in and click a Panoramax picture dot.');
 };
+// EVERY exit path (✕ Map, Esc, plugin-internal exits) reports pic = null —
+// hide the street controls from this one place so none can leave the pose
+// panel dangling over the map, where Connect/Save have nothing to act on (#104).
+onPictureChanged((pic) => { if (!pic) leaveStreetUI(); });
 
 // Manual 180° flip for a mis-oriented sequence (#69) — backstop when the sun
 // compass can't see the sun (evening rides, narrow alleys). Persists per
@@ -257,6 +261,14 @@ const poseVals = {
 // and the PATCH API use [0,360).
 const yawToSlider = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
 
+// The manual token link is a FALLBACK: pointless once a token is present
+// (connected or pasted), so it only shows while the field is empty (#104).
+const poseHelp = document.getElementById('pose-token-help');
+const syncPoseHelp = () => {
+  poseHelp.hidden = !!poseTokenInput.value.trim();
+};
+poseTokenInput.addEventListener('input', syncPoseHelp);
+
 function syncPosePanel() {
   const pose = getCurrentPose();
   if (!pose || posePanel.hidden) return;
@@ -267,7 +279,8 @@ function syncPosePanel() {
   // Token help goes to the CURRENT picture's home instance (that's where the
   // PATCH lands): sign in there, then this endpoint lists your tokens.
   const home = currentPicture()?.homeApi;
-  if (home) document.getElementById('pose-token-help').href = `${home}/users/me/tokens`;
+  if (home) poseHelp.href = `${home}/users/me/tokens`;
+  syncPoseHelp();
 }
 onPictureChanged(() => syncPosePanel());
 
@@ -320,9 +333,9 @@ poseConnectBtn.addEventListener('click', async () => {
     if (claimTab) claimTab.location = parsed.claimUrl;
     else {
       // Popup blocked: hand the claim URL to the help link instead.
-      const help = document.getElementById('pose-token-help');
-      help.href = parsed.claimUrl;
-      help.textContent = 'Pop-up blocked — open the sign-in page manually ↗';
+      poseHelp.href = parsed.claimUrl;
+      poseHelp.textContent = 'Pop-up blocked — open the sign-in page manually ↗';
+      poseHelp.hidden = false;
     }
     poseStatus.textContent = 'Sign in with your OpenStreetMap account in the opened tab — waiting for the connection…';
     for (const delay of claimPollDelays()) {
@@ -334,6 +347,7 @@ poseConnectBtn.addEventListener('click', async () => {
         const me = await meRes.json().catch(() => ({}));
         sessionStorage.setItem(TOKEN_KEY(home), parsed.jwt); // session only
         poseTokenInput.value = parsed.jwt;
+        syncPoseHelp(); // token present — the manual fallback link disappears
         poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
         return;
       }
