@@ -159,6 +159,17 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Some GPU/Chrome combos never repaint this layer above the continuously
+     redrawn WebGL canvas — the panel shows blank until a hover forces a paint
+     invalidation (#104 report). This imperceptible background pulse keeps a
+     paint invalidation running every frame while the panel is open, so the
+     layer can never go stale. Cheap: the panel is ~250×260 px. */
+  animation: pose-panel-keepalive 0.4s linear infinite alternate;
+}
+
+@keyframes pose-panel-keepalive {
+  from { background-color: rgba(20, 20, 24, 0.9); }
+  to { background-color: rgba(20, 21, 24, 0.9); }
 }
 
 .pose-row {
