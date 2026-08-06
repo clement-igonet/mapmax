@@ -26,11 +26,18 @@ const report = await page.evaluate(async () => {
   // Open the panel and click Connect exactly like the user.
   document.getElementById('pose-toggle').click();
   document.getElementById('pose-connect').click();
-  await new Promise((r) => setTimeout(r, 1500));
+  out.trace = [];
+  for (let t = 0; t <= 12000; t += 2000) {
+    await new Promise((r) => setTimeout(r, 2000));
+    out.trace.push({
+      t,
+      status: document.getElementById('pose-status').textContent.slice(0, 90),
+      connectDisabled: document.getElementById('pose-connect').disabled,
+      tokenLen: document.getElementById('pose-token').value.length,
+    });
+  }
   out.picAfter = sv.currentPicture() ? { id: sv.currentPicture().id, homeApi: sv.currentPicture().homeApi } : null;
-  out.status = document.getElementById('pose-status').textContent;
   out.panelHidden = document.getElementById('pose-panel').hidden;
-  out.toggleHidden = document.getElementById('pose-toggle').hidden;
   return out;
 });
 console.log(JSON.stringify(report, null, 1));
