@@ -229,6 +229,36 @@ body {
   border-color: #2962ff;
 }
 
+/* Compass nudge pad (#107): fixed-resolution position moves — 30 cm per
+   click, 1 m with ⇧ — for users who find the drags too sensitive. */
+#pose-pad {
+  display: grid;
+  grid-template-areas: '. n .' 'w . e' '. s .';
+  gap: 2px;
+}
+
+#pose-pad button {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  background: rgb(52, 54, 60);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#pose-pad button:hover {
+  background: rgb(66, 68, 76);
+}
+
+#pose-pad .pad-n { grid-area: n; }
+#pose-pad .pad-w { grid-area: w; }
+#pose-pad .pad-e { grid-area: e; }
+#pose-pad .pad-s { grid-area: s; }
+
 #pose-rot-val,
 #pose-pos-val {
   flex: 1;

@@ -560,6 +560,10 @@ if (nav.skipped) {
     mm.dispatchEvent(new PointerEvent('pointermove', { clientX: 40, clientY: 60, bubbles: true, pointerId: 11 }));
     mm.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 11 }));
     const mmMoved = Math.abs(sv.getCurrentPositionOffset().e - eBeforeMm) > 5;
+    // Compass pad (#107): one east click = +30 cm at fixed resolution.
+    const eBeforePad = sv.getCurrentPositionOffset().e;
+    document.querySelector('#pose-pad .pad-e').click();
+    const padStep = sv.getCurrentPositionOffset().e - eBeforePad;
     // Persistence is debounced — wait, then check the per-picture store.
     await new Promise((r) => setTimeout(r, 450));
     const stored = Object.keys(localStorage).filter((k) => k.startsWith('mapmax:pos:'))
@@ -569,7 +573,7 @@ if (nav.skipped) {
     const anchorReset = [...ps.lngLat];
     const eyeReset = ps._options.eyeHeight;
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); // leave edit mode
-    return { rowShown, elevShown, mmEditable, mmMoved,
+    return { rowShown, elevShown, mmEditable, mmMoved, padStep,
              anchorMoved: anchor1[0] !== anchor0[0],
              offsetTracked: !!offset && Math.abs(offset.e) > 0.1,
              eyeRaised: eye1 > eye0 + 0.5,
@@ -585,6 +589,7 @@ if (nav.skipped) {
   assert.ok(posn.eyeRaised && posn.uAfterGauge > 0.5, `elevation gauge did not raise the eye (~1 m drag) (#107): ${JSON.stringify(posn)}`);
   assert.ok(posn.mmEditable, 'minimap not marked editable in edit mode (#107)');
   assert.ok(posn.mmMoved, 'minimap drag did not move the position (#107)');
+  assert.ok(Math.abs(posn.padStep - 0.3) < 1e-9, `compass pad east click must move exactly +30 cm (#107): ${posn.padStep}`);
   assert.ok(Math.abs(posn.storedE) > 0.1, `position not persisted per picture (#107): ${JSON.stringify(posn)}`);
   assert.ok(posn.storedU > 0.5, 'altitude not persisted (#107)');
   assert.ok(posn.anchorRestored && posn.eyeRestored, 'reset did not restore GPS anchor + eye height (#107)');

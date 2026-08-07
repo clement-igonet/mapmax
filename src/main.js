@@ -444,6 +444,16 @@ poseElevHandle.addEventListener('pointermove', (e) => {
 poseElevHandle.addEventListener('pointerup', () => { elevDragging = false; });
 poseElevHandle.addEventListener('pointercancel', () => { elevDragging = false; });
 
+// Compass nudge pad (#107): fixed-resolution moves — the drags felt too
+// sensitive for fine placement. 30 cm per click, 1 m with ⇧ held.
+document.getElementById('pose-pad').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const step = e.shiftKey ? 1 : 0.3;
+  nudgeCurrentPosition({ eastM: Number(btn.dataset.e) * step, northM: Number(btn.dataset.n) * step });
+  syncPosVal();
+});
+
 // Minimap drag (#107): in edit mode, dragging the minimap moves the panorama
 // on the 2D ground plan — grab-the-world: the dots follow the cursor. The
 // minimap draws at a fixed metric scale (0.6 m/px, minimap.js).
