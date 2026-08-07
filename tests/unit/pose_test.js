@@ -3,11 +3,15 @@
 import { assertEquals, assertThrows, assertAlmostEquals } from 'jsr:@std/assert@1';
 import {
   apiBaseFromSelfHref,
+  axisRotationMatrix,
   buildPosePatch,
   clampPose,
+  composePoseGesture,
   homeApiBase,
+  mat3Multiply,
   normalizeYaw,
   panoPoseMatrix,
+  poseFromMatrix,
   posePatchRequest,
   poseTransform,
   readPoseFromExif,
@@ -154,4 +158,74 @@ Deno.test('panoPoseMatrix: valid at pitch ±90 (no degenerate cross product)', (
 
 Deno.test('POSE_STORE_KEY: namespaced per sequence', () => {
   assertEquals(POSE_STORE_KEY('seq-9'), 'mapmax:pose:seq-9');
+});
+
+// --- Edit-mode gesture maths (#106) ----------------------------------------
+
+Deno.test('poseFromMatrix: exact roundtrip of panoPoseMatrix', () => {
+  for (const [y, p, r] of [[0, 0, 0], [37, 12, -8], [208, -25, 14], [359, 44, -44], [90, 89, 30]]) {
+    const back = poseFromMatrix(panoPoseMatrix(y, p, r));
+    assertAlmostEquals(back.yaw, normalizeYaw(y), 1e-9);
+    assertAlmostEquals(back.pitch, p, 1e-9);
+    assertAlmostEquals(back.roll, r, 1e-9);
+  }
+});
+
+Deno.test('poseFromMatrix: gimbal at pitch 90 still roundtrips the matrix', () => {
+  const m = panoPoseMatrix(40, 90, 0);
+  const back = poseFromMatrix(m);
+  const m2 = panoPoseMatrix(back.yaw, back.pitch, back.roll);
+  for (let i = 0; i < 9; i++) assertAlmostEquals(m2[i], m[i], 1e-9);
+});
+
+Deno.test('mat3Multiply / axisRotationMatrix: rotation about z matches the yaw pose', () => {
+  // Our azimuth convention makes Rot(z, t) numerically equal to a yaw-only pose.
+  const rz = axisRotationMatrix([0, 0, 1], 25);
+  const yaw = panoPoseMatrix(25, 0, 0);
+  for (let i = 0; i < 9; i++) assertAlmostEquals(rz[i], yaw[i], 1e-9);
+  // identity times anything is a no-op
+  const id = axisRotationMatrix([0, 0, 1], 0);
+  const prod = mat3Multiply(id, yaw);
+  for (let i = 0; i < 9; i++) assertAlmostEquals(prod[i], yaw[i], 1e-9);
+});
+
+Deno.test('composePoseGesture: horizontal drag is pure yaw, from any start pose', () => {
+  const out = composePoseGesture({ yaw: 30, pitch: 0, roll: 0 }, { yawDeg: 120, pitchDeg: -10 }, { aboutUp: 10 });
+  assertAlmostEquals(out.yaw, normalizeYaw(30 - 10), 1e-9); // photo turned, camera untouched
+  assertAlmostEquals(out.pitch, 0, 1e-9);
+  assertAlmostEquals(out.roll, 0, 1e-9);
+});
+
+Deno.test('composePoseGesture: vertical drag about the VIEW right axis', () => {
+  // Convention locked by these tests: positive aboutRight INCREASES pitch when
+  // looking north (camera yaw 0, right axis = east).
+  const north = composePoseGesture({ yaw: 0, pitch: 5, roll: 0 }, { yawDeg: 0, pitchDeg: 0 }, { aboutRight: 8 });
+  assertAlmostEquals(north.pitch, 5 + 8, 1e-6);
+  assertAlmostEquals(north.roll, 0, 1e-6);
+  // Looking EAST (camera yaw 90, right axis = south) at a yaw-0 photo: the
+  // same world rotation reads as roll in the yaw/pitch/roll model — with the
+  // opposite sign, because south = −north.
+  const east = composePoseGesture({ yaw: 0, pitch: 0, roll: 0 }, { yawDeg: 90, pitchDeg: 0 }, { aboutRight: 8 });
+  assertAlmostEquals(east.roll, -8, 1e-6);
+  assertAlmostEquals(east.pitch, 0, 1e-6);
+});
+
+Deno.test('composePoseGesture: ring roll about the viewing axis', () => {
+  // Looking north, level: forward = north → pure roll; positive adds roll.
+  const out = composePoseGesture({ yaw: 0, pitch: 0, roll: 3 }, { yawDeg: 0, pitchDeg: 0 }, { aboutForward: 5 });
+  assertAlmostEquals(out.roll, 3 + 5, 1e-6);
+  assertAlmostEquals(out.pitch, 0, 1e-6);
+  assertAlmostEquals(out.yaw, 0, 1e-6);
+});
+
+Deno.test('composePoseGesture: gestures keep the matrix orthonormal (no drift)', () => {
+  let pose = { yaw: 12, pitch: 3, roll: -2 };
+  for (let i = 0; i < 200; i++) {
+    pose = composePoseGesture(pose, { yawDeg: (i * 7) % 360, pitchDeg: ((i % 40) - 20) }, { aboutUp: 0.7, aboutRight: -0.4, aboutForward: 0.2 });
+  }
+  const m = panoPoseMatrix(pose.yaw, pose.pitch, pose.roll);
+  const r = [m[0], m[3], m[6]], f = [m[1], m[4], m[7]], u = [m[2], m[5], m[8]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  for (const v of [r, f, u]) assertAlmostEquals(dot(v, v), 1, 1e-6);
+  assertAlmostEquals(dot(r, f), 0, 1e-6);
 });

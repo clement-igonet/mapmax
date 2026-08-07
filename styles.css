@@ -202,6 +202,57 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
+/* Pose edit mode (#106): toggle + the roll ring. */
+#pose-edit {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#pose-edit:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+#pose-edit.active {
+  background: #2962ff;
+  border-color: #2962ff;
+}
+
+#pose-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 280px;
+  height: 280px;
+  margin: -140px 0 0 -140px;
+  z-index: 19;
+  border: 2px dashed rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  pointer-events: none; /* photo drags pass through — only the handle grabs */
+}
+
+#pose-ring-handle {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  border-radius: 50%;
+  background: #2962ff;
+  border: 2px solid #fff;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+#pose-ring-handle:active {
+  cursor: grabbing;
+}
+
 #pose-connect {
   background: #2962ff;
   color: #fff;
