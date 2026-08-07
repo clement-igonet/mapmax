@@ -20,6 +20,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 | Issue | Title | Notes |
 |---|---|---|
 | [#106](https://github.com/clement-igonet/mapmax/issues/106) | Pose edit mode: rotate the photosphere graphically (drag yaw/pitch, ring roll) | UX successor to the #98 sliders (kept as read-out) |
+| [#107](https://github.com/clement-igonet/mapmax/issues/107) | Position edit mode: move a pano on the map (lat/lon) + altitude | lat/lon PATCHable (v2.8.0); altitude has NO API field — local-only + upstream ask |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
 | [#87](https://github.com/clement-igonet/mapmax/issues/87) | Position-only tile/LOD (app-level) | app-side mitigations shipped (#87 gate pin, #95 clip); full fix tracked upstream via #94 |
