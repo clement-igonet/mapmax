@@ -144,31 +144,28 @@ body {
   right: 50px;
   z-index: 20;
   width: 250px;
-  /* NO layer promotion (no transform/will-change/animation) — on the affected
-     GPU/Chrome any promoted layer randomly skips painting (#98/#104 reports:
-     blank panel, blank background, hover shimmer). Plain DOM is the rendering
-     path of the standalone street buttons, which never glitched. Fully OPAQUE
-     background: alpha-blending a big overlay over the WebGL canvas is the
-     other classic driver edge-case, and 0.9 was near-opaque anyway. */
-  background: rgb(24, 25, 28);
+  /* The panel is an INVISIBLE container: no background, border or promotion.
+     On the affected GPU/Chrome, LARGE overlay surfaces over the WebGL canvas
+     rasterize unreliably in every configuration (blank at open, blank on
+     hover invalidation, blank on keepalive ticks — #98/#104/#106 reports),
+     while the small standalone street buttons never glitched once, hover
+     included. So there is no large surface: each child below is a small
+     self-backed chip, N copies of the proven-reliable recipe. */
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  padding: 10px 12px;
   font-size: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
-/* Isolate hover repaints: each panel CHILD rasters as its own tiny layer, so
-   a button's :hover change repaints only that button — never the shared panel
-   surface, whose re-raster is unreliable on the affected GPU/Chrome (the
-   background flashed white on every hover; per-child layers are the exact
-   configuration the user confirmed made the buttons rock-solid). The panel
-   itself stays UNPROMOTED + opaque — the at-rest-stable configuration. */
+/* Every panel child is its own small opaque chip (the ✕ Map size class).
+   Buttons/inputs with dedicated styles later in the file override the chip
+   background (equal specificity, later rule wins). No transforms — plain DOM. */
 #pose-panel > * {
-  transform: translateZ(0);
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 6px 10px;
 }
 
 .pose-row {
@@ -214,7 +211,7 @@ body {
 
 /* Pose edit mode (#106): toggle + the roll ring. */
 #pose-edit {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgb(52, 54, 60); /* opaque — sits directly over the photo now */
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px;
@@ -224,7 +221,7 @@ body {
 }
 
 #pose-edit:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgb(66, 68, 76);
 }
 
 #pose-edit.active {
@@ -306,7 +303,7 @@ body {
 }
 
 #pose-token {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(34, 36, 41); /* opaque — sits directly over the photo now */
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 6px;
