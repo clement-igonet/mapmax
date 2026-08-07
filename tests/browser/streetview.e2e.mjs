@@ -122,7 +122,10 @@ const nav = await page.evaluate(async () => {
     const tick = () => (pred() || performance.now() - t0 > ms ? res() : requestAnimationFrame(tick));
     tick();
   });
-  await waitFor(() => sv._photosphere()?.mode === 'inside', 10000);
+  // Enter includes the sun-compass consensus scan (network, ~11 images) — give
+  // it real-API headroom: a short budget here made every later drag assert
+  // fail on slow days (drags are ignored while mode is still 'entering').
+  await waitFor(() => sv._photosphere()?.mode === 'inside', 30000);
   const enteredMode = sv._photosphere()?.mode;
   const inStreet = sv.isStreetMode();
   // #54 deep-link: entering writes ?pic=<id> to the URL (checked before the walk
