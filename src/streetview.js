@@ -8,7 +8,7 @@ import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 import { consensusVerdict, sunYawVerdict } from './sunflip.js';
 import { getSequence } from './panoramax.js';
-import { POSE_STORE_KEY, normalizeYaw, posePatchRequest } from './pose.js';
+import { POSE_STORE_KEY, composePoseGesture, normalizeYaw, posePatchRequest } from './pose.js';
 
 export { pictureToTarget };
 
@@ -149,6 +149,46 @@ export function setCurrentPose({ pitch, roll, yaw } = {}) {
     roll: current.poseRoll || 0,
   });
   return getCurrentPose();
+}
+
+// --- Pose edit mode (#106) --------------------------------------------------
+// While on, dragging the canvas rotates the PHOTO (view-space composition on
+// the pose) instead of the camera; the ring control feeds aboutForward.
+let poseEditOn = false;
+export const isPoseEditMode = () => poseEditOn;
+
+// Apply a view-space gesture (degrees) to the current pano's pose and return
+// the resulting {pitch, roll, yaw(offset)} — see composePoseGesture for axes.
+export function applyPoseGesture(deltas) {
+  if (!current || !photosphere) return null;
+  const total = {
+    yaw: normalizeYaw((current.heading || 0) + (current.yawOffset || 0)),
+    pitch: current.posePitch || 0,
+    roll: current.poseRoll || 0,
+  };
+  const camera = { yawDeg: photosphere.yaw, pitchDeg: photosphere.pitch };
+  const next = composePoseGesture(total, camera, deltas);
+  return setCurrentPose({
+    pitch: next.pitch,
+    roll: next.roll,
+    yaw: normalizeYaw(next.yaw - (current.heading || 0)),
+  });
+}
+
+// Toggle edit mode. `onChange` (optional) fires after every drag-applied
+// gesture so the UI can mirror the values (sliders, ring handle).
+export function setPoseEditMode(on, onChange) {
+  if (!photosphere || !current) on = false;
+  poseEditOn = !!on;
+  photosphere?.setPoseEditDrag(poseEditOn
+    ? (dxDeg, dyDeg) => {
+      // Grab-the-photo feel: content follows the cursor (signs derive from
+      // the composePoseGesture convention pinned by the unit tests).
+      applyPoseGesture({ aboutUp: -dxDeg, aboutRight: -dyDeg });
+      if (onChange) onChange();
+    }
+    : null);
+  return poseEditOn;
 }
 
 // Write the displayed pose back to the picture's HOME Panoramax instance

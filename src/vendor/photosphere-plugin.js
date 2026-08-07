@@ -292,6 +292,12 @@ export class Photosphere {
         return { yaw: this._panoYawDeg, pitch: this._panoPitchDeg, roll: this._panoRollDeg };
     }
 
+    // Pose-edit mode (mapmax #106): while a callback is set, drags feed it
+    // (dxDeg, dyDeg) instead of moving the camera. null restores look-around.
+    setPoseEditDrag(cb) {
+        this._poseEditDrag = typeof cb === 'function' ? cb : null;
+    }
+
     // Ground navigation arrows rendered inside the panorama layer (mapmax #26).
     // `list` = [{ bearing (deg toward the target), id }].
     setNavArrows(list) {
@@ -800,6 +806,17 @@ export class Photosphere {
             return;
         }
         const { dragSensitivity, minPitch, maxPitch } = this._options;
+        // Pose-edit mode (mapmax #106): the drag manipulates the PHOTO, not the
+        // camera — deltas are handed to the app which composes them onto the
+        // pose (view-space rotation) and re-applies via setPanoPose().
+        if (this._poseEditDrag) {
+            const dxDeg = (event.clientX - this._lastX) * dragSensitivity;
+            const dyDeg = (event.clientY - this._lastY) * dragSensitivity;
+            this._lastX = event.clientX;
+            this._lastY = event.clientY;
+            this._poseEditDrag(dxDeg, dyDeg);
+            return;
+        }
         this._yawDeg = (this._yawDeg - (event.clientX - this._lastX) * dragSensitivity + 360) % 360;
         this._pitchDeg = Math.max(minPitch, Math.min(maxPitch,
             this._pitchDeg + (event.clientY - this._lastY) * dragSensitivity));

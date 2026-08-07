@@ -464,6 +464,58 @@ if (nav.skipped) {
   assert.deepEqual({ pitch: pose.stored?.pitch, roll: pose.stored?.roll }, { pitch: -6, roll: 3 }, 'pose not persisted per sequence in localStorage (#98)');
   assert.equal(pose.reset.pitch, 0, 'pose reset did not restore the metadata orientation (#98)');
   console.log('[e2e] pose leveller live-applies pitch/roll & persists locally (#98) OK');
+
+  // #106 pose edit mode: drags rotate the PHOTO (camera untouched), the ring
+  // rolls it, Esc peels edit mode first (still inside), look-around returns.
+  const edit = await page.evaluate(async () => {
+    const sv = await import('./src/streetview.js');
+    const { map } = await import('./src/main.js');
+    const ps = sv._photosphere();
+    document.getElementById('pose-edit').click();
+    const on = sv.isPoseEditMode();
+    const ringShown = !document.getElementById('pose-ring').hidden;
+    const camYaw0 = ps.yaw;
+    const pose0 = ps.getPanoPose();
+    const container = map.getContainer();
+    container.dispatchEvent(new MouseEvent('mousedown', { clientX: 400, clientY: 300, bubbles: true }));
+    for (let i = 1; i <= 5; i++) {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 400 + i * 20, clientY: 300 + i * 6, bubbles: true }));
+    }
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 500, clientY: 330, bubbles: true }));
+    const camYawStable = ps.yaw === camYaw0;
+    const pose1 = ps.getPanoPose();
+    // Ring: grab the handle at the top of the circle and turn it ~17°.
+    const handle = document.getElementById('pose-ring-handle');
+    const r = document.getElementById('pose-ring').getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2, rad = r.width / 2;
+    const pt = (a) => ({ clientX: cx + rad * Math.cos(a), clientY: cy + rad * Math.sin(a) });
+    handle.dispatchEvent(new PointerEvent('pointerdown', { ...pt(-Math.PI / 2), bubbles: true, pointerId: 7 }));
+    handle.dispatchEvent(new PointerEvent('pointermove', { ...pt(-Math.PI / 2 + 0.3), bubbles: true, pointerId: 7 }));
+    handle.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7 }));
+    const pose2 = ps.getPanoPose();
+    // Esc: edit mode off, street mode kept.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const offAfterEsc = !sv.isPoseEditMode();
+    const stillInside = sv.isStreetMode();
+    const yawBefore = ps.yaw;
+    container.dispatchEvent(new MouseEvent('mousedown', { clientX: 400, clientY: 300, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 460, clientY: 300, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 460, clientY: 300, bubbles: true }));
+    const lookRestored = ps.yaw !== yawBefore;
+    return { on, ringShown, camYawStable,
+             poseChanged: pose1.yaw !== pose0.yaw && pose1.pitch !== pose0.pitch,
+             rollChanged: Math.abs(pose2.roll - pose1.roll) > 5,
+             offAfterEsc, stillInside, lookRestored };
+  });
+  assert.ok(edit.on, 'edit mode did not engage (#106)');
+  assert.ok(edit.ringShown, 'roll ring not shown in edit mode (#106)');
+  assert.ok(edit.camYawStable, 'camera moved during a pose-edit drag (#106)');
+  assert.ok(edit.poseChanged, 'pose-edit drag did not rotate the photo (#106)');
+  assert.ok(edit.rollChanged, 'ring did not roll the photo (#106)');
+  assert.ok(edit.offAfterEsc, 'Esc did not leave edit mode (#106)');
+  assert.ok(edit.stillInside, 'Esc in edit mode must NOT exit street view (#106)');
+  assert.ok(edit.lookRestored, 'look-around not restored after edit mode (#106)');
+  console.log('[e2e] pose edit mode: photo drag + roll ring, Esc layering, look restored (#106) OK');
 }
 
 

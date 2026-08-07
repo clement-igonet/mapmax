@@ -5,7 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, ST
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose } from './streetview.js';
+import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isPoseEditMode, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, PENDING_TOKEN_KEY, TOKEN_KEY } from './panoramaxauth.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
@@ -221,6 +221,7 @@ const leaveStreetUI = () => {
   document.getElementById('flip-pano').hidden = true;
   document.getElementById('pose-toggle').hidden = true;
   document.getElementById('pose-panel').hidden = true;
+  setEditModeUI(false); // never leave photo-drag mode armed outside the panel (#106)
   // Back to the 50/50 default for the next entry (#101) — streetview.js resets
   // its remembered blend on exit to match.
   blendSlider.value = String(STREET_DEFAULT_BLEND * 100);
@@ -320,6 +321,8 @@ document.getElementById('pose-toggle').addEventListener('click', () => {
     poseStatus.textContent = POSE_STATUS_DEFAULT;
     syncPosePanel();
     if (!poseTokenInput.value) adoptPendingToken(); // fire-and-forget check
+  } else {
+    setEditModeUI(false); // closing the panel closes edit mode with it (#106)
   }
 });
 
@@ -397,8 +400,63 @@ for (const k of ['pitch', 'roll', 'yaw']) {
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
   syncPosePanel();
+  syncRing();
   poseStatus.textContent = 'Pose reset to the metadata orientation.';
 });
+
+// Pose edit mode (#106): drag rotates the photo (yaw/pitch), the ring rolls it.
+const poseEditBtn = document.getElementById('pose-edit');
+const poseRing = document.getElementById('pose-ring');
+const poseRingHandle = document.getElementById('pose-ring-handle');
+
+// The handle orbits by rotating the (visually symmetric) ring container.
+function syncRing() {
+  if (poseRing.hidden) return;
+  poseRing.style.transform = `rotate(${getCurrentPose()?.roll || 0}deg)`;
+}
+
+function setEditModeUI(on) {
+  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); });
+  poseEditBtn.classList.toggle('active', actual);
+  poseRing.hidden = !actual;
+  if (actual) {
+    syncRing();
+    poseStatus.textContent = 'Edit mode — drag the photo to turn/tilt it, use the ring to straighten the horizon. Esc leaves edit mode.';
+  }
+  return actual;
+}
+
+poseEditBtn.addEventListener('click', () => {
+  const on = setEditModeUI(!isPoseEditMode());
+  if (!on) poseStatus.textContent = POSE_STATUS_DEFAULT;
+});
+
+// Ring drag: the angle around the screen centre maps to roll about the
+// viewing axis (clockwise on screen = positive, matching composePoseGesture).
+let ringLastAngle = null;
+const ringAngle = (e) => {
+  const r = poseRing.getBoundingClientRect();
+  return (Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180) / Math.PI;
+};
+poseRingHandle.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  try { poseRingHandle.setPointerCapture(e.pointerId); } catch { /* synthetic events (tests) have no real pointer */ }
+  ringLastAngle = ringAngle(e);
+});
+poseRingHandle.addEventListener('pointermove', (e) => {
+  if (ringLastAngle == null) return;
+  const a = ringAngle(e);
+  let delta = a - ringLastAngle;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  ringLastAngle = a;
+  applyPoseGesture({ aboutForward: delta });
+  syncPosePanel();
+  syncRing();
+});
+poseRingHandle.addEventListener('pointerup', () => { ringLastAngle = null; });
+poseRingHandle.addEventListener('pointercancel', () => { ringLastAngle = null; });
 
 document.getElementById('pose-save').addEventListener('click', async () => {
   let token = poseTokenInput.value.trim();
@@ -422,6 +480,12 @@ exitBtn.addEventListener('click', () => {
 });
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  // Esc peels one layer at a time: edit mode first, then street view (#106).
+  if (isPoseEditMode()) {
+    setEditModeUI(false);
+    poseStatus.textContent = POSE_STATUS_DEFAULT;
+    return;
+  }
   if (isStreetMode()) exitStreetView();
   leaveStreetUI();
 });
