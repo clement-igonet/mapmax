@@ -173,6 +173,18 @@ export function getCurrentPositionOffset() {
   return { ...(current.posOffset || { e: 0, n: 0, u: 0 }) };
 }
 
+// Position-change event (#107): deliberately separate from onPictureChanged —
+// that one triggers network refreshes (minimap search), far too heavy for the
+// per-gesture cadence of position nudges. Listeners re-derive eye-relative
+// state (nav dots/arrows) from the corrected position.
+const positionListeners = [];
+export function onPositionChanged(cb) {
+  positionListeners.push(cb);
+}
+const emitPosition = () => {
+  for (const cb of positionListeners) cb();
+};
+
 function applyPositionOverride() {
   if (!current || !photosphere) return;
   const o = current.posOffset || { e: 0, n: 0, u: 0 };
@@ -191,6 +203,7 @@ export function nudgeCurrentPosition({ eastM = 0, northM = 0, upM = 0 } = {}) {
   o.n = clampM(o.n + northM, 50);
   o.u = Math.max(-3, Math.min(6, (o.u || 0) + upM));
   applyPositionOverride();
+  emitPosition();
   const key = POSITION_STORE_KEY(current.id);
   const json = JSON.stringify(o);
   clearTimeout(posSaveTimer);
@@ -202,6 +215,7 @@ export function resetCurrentPosition() {
   if (!current) return null;
   current.posOffset = { e: 0, n: 0, u: 0 };
   applyPositionOverride();
+  emitPosition();
   lsSet(POSITION_STORE_KEY(current.id), JSON.stringify(current.posOffset));
   return getCurrentPositionOffset();
 }

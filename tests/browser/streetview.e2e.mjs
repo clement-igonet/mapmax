@@ -564,6 +564,14 @@ if (nav.skipped) {
     const eBeforePad = sv.getCurrentPositionOffset().e;
     document.querySelector('#pose-pad .pad-e').click();
     const padStep = sv.getCurrentPositionOffset().e - eBeforePad;
+    // Nav dots sit at FIXED world positions: a nudge moves the eye, so their
+    // eye-relative offsets must re-derive (they must NOT ride the camera).
+    const poisBefore = (ps._navPois || []).map((p) => p.east);
+    document.querySelector('#pose-pad .pad-e').click();
+    const poisAfter = (ps._navPois || []).map((p) => p.east);
+    const poiShiftOk = poisBefore.length === 0 ||
+      (poisAfter.length > 0 && Math.abs((poisBefore[0] - poisAfter[0]) - 0.3) < 1e-6);
+    const poiCount = poisBefore.length;
     // Persistence is debounced — wait, then check the per-picture store.
     await new Promise((r) => setTimeout(r, 450));
     const stored = Object.keys(localStorage).filter((k) => k.startsWith('mapmax:pos:'))
@@ -573,7 +581,7 @@ if (nav.skipped) {
     const anchorReset = [...ps.lngLat];
     const eyeReset = ps._options.eyeHeight;
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); // leave edit mode
-    return { rowShown, elevShown, mmEditable, mmMoved, padStep,
+    return { rowShown, elevShown, mmEditable, mmMoved, padStep, poiShiftOk, poiCount,
              anchorMoved: anchor1[0] !== anchor0[0],
              offsetTracked: !!offset && Math.abs(offset.e) > 0.1,
              eyeRaised: eye1 > eye0 + 0.5,
@@ -590,6 +598,8 @@ if (nav.skipped) {
   assert.ok(posn.mmEditable, 'minimap not marked editable in edit mode (#107)');
   assert.ok(posn.mmMoved, 'minimap drag did not move the position (#107)');
   assert.ok(Math.abs(posn.padStep - 0.3) < 1e-9, `compass pad east click must move exactly +30 cm (#107): ${posn.padStep}`);
+  assert.ok(posn.poiShiftOk, `nav dots must stay at their world positions across a nudge (#107): ${JSON.stringify(posn)}`);
+  if (posn.poiCount === 0) console.log('[e2e] note: no nav dots near this pano — world-anchor check ran vacuously');
   assert.ok(Math.abs(posn.storedE) > 0.1, `position not persisted per picture (#107): ${JSON.stringify(posn)}`);
   assert.ok(posn.storedU > 0.5, 'altitude not persisted (#107)');
   assert.ok(posn.anchorRestored && posn.eyeRestored, 'reset did not restore GPS anchor + eye height (#107)');
