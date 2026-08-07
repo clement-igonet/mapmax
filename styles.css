@@ -161,6 +161,16 @@ body {
   gap: 8px;
 }
 
+/* Isolate hover repaints: each panel CHILD rasters as its own tiny layer, so
+   a button's :hover change repaints only that button — never the shared panel
+   surface, whose re-raster is unreliable on the affected GPU/Chrome (the
+   background flashed white on every hover; per-child layers are the exact
+   configuration the user confirmed made the buttons rock-solid). The panel
+   itself stays UNPROMOTED + opaque — the at-rest-stable configuration. */
+#pose-panel > * {
+  transform: translateZ(0);
+}
+
 .pose-row {
   display: flex;
   align-items: center;
