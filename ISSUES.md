@@ -10,7 +10,6 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | PR(s) | State |
 |---|---|---|---|
-| [#104](https://github.com/clement-igonet/mapmax/issues/104) | "Connect to Panoramax" (OAuth claim flow) — automate token retrieval | [#105](https://github.com/clement-igonet/mapmax/pull/105) (draft) | handshake + late-claim adoption implemented; panel-rendering hardened for a hostile GPU/Chrome (plain DOM, opaque bg); claim flow reaches "Connexion terminée" on [sandbox](https://sandbox.mapmax.confinia.io) — final user round-trip pending |
 | [#103](https://github.com/clement-igonet/mapmax/issues/103) | Adopt stock MapLibre ≥ v6.20 (with #8057) on all envs | — | promotion path decided; **blocked upstream** (latest v6.1.0, [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) open) |
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); branch-deploy flow still manual |
@@ -33,6 +32,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Resolution |
 |---|---|---|
+| [#104](https://github.com/clement-igonet/mapmax/issues/104) | "Connect to Panoramax" (OAuth claim flow) — automate token retrieval | [#105](https://github.com/clement-igonet/mapmax/pull/105) merged: generate→claim→poll + late-claim adoption, per-instance session tokens, panel-rendering hardening; user-validated on sandbox; deployed all envs; closed 2026-08-07 |
 | [#98](https://github.com/clement-igonet/mapmax/issues/98) | Pose corrector (pitch/roll/yaw) + Panoramax PATCH write-back | [#100](https://github.com/clement-igonet/mapmax/pull/100) merged (incl. panel-rendering fixes, token-help link, README how-to); validated on sandbox by the user; deployed via CI; closed 2026-08-04 |
 | [#47](https://github.com/clement-igonet/mapmax/issues/47) | Use picture metadata for placement | superseded/resolved by #98; closed 2026-08-04 |
 | [#63](https://github.com/clement-igonet/mapmax/issues/63) | In-app metadata override + editor deep-links | superseded/resolved by #98 (write-back beats deep-links; #104 for one-click auth); closed 2026-08-04 |
