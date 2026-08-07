@@ -47,3 +47,9 @@ export function claimPollDelays() {
 // Session-only token storage, keyed per home instance — a Panoramax token is
 // only valid on the instance that issued it (#98 resolves homeApi per picture).
 export const TOKEN_KEY = (apiBase) => `mapmax:panoramax-token:${apiBase}`;
+
+// A generated-but-not-yet-claimed JWT, remembered per instance: the OAuth tab
+// can outlive the poll (slow sign-in, tab kept open, page reloaded), so the
+// claim is re-checked from this key whenever it might matter — panel open,
+// Save click — and promoted to TOKEN_KEY once the instance answers 200.
+export const PENDING_TOKEN_KEY = (apiBase) => `mapmax:panoramax-pending:${apiBase}`;

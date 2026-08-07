@@ -5,6 +5,7 @@ import {
   parseGeneratedToken,
   tokenGenerateRequest,
   whoAmIRequest,
+  PENDING_TOKEN_KEY,
   TOKEN_KEY,
 } from '../../src/panoramaxauth.js';
 
@@ -44,6 +45,7 @@ Deno.test('claimPollDelays: quick first, relaxed after, ~3 min total', () => {
   assertEquals(total, 180000);
 });
 
-Deno.test('TOKEN_KEY: per home instance', () => {
+Deno.test('TOKEN_KEY / PENDING_TOKEN_KEY: per home instance, distinct namespaces', () => {
   assertEquals(TOKEN_KEY('https://a/api'), 'mapmax:panoramax-token:https://a/api');
+  assertEquals(PENDING_TOKEN_KEY('https://a/api'), 'mapmax:panoramax-pending:https://a/api');
 });

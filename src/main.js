@@ -6,7 +6,7 @@ import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
 import { _photosphere, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose } from './streetview.js';
-import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, TOKEN_KEY } from './panoramaxauth.js';
+import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, PENDING_TOKEN_KEY, TOKEN_KEY } from './panoramaxauth.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -292,12 +292,34 @@ const storedToken = () => {
   return (home && sessionStorage.getItem(TOKEN_KEY(home))) || sessionStorage.getItem('mapmax:panoramax-token') || '';
 };
 
+// The OAuth claim can complete AFTER the Connect poll gave up (slow sign-in,
+// tab left open, page reloaded meanwhile): the generated JWT is remembered per
+// instance (PENDING_TOKEN_KEY) and re-checked here on panel open and on Save,
+// so a finished sign-in is adopted no matter when it finished (#104).
+async function adoptPendingToken() {
+  const home = currentPicture()?.homeApi;
+  if (!home) return false;
+  const pending = sessionStorage.getItem(PENDING_TOKEN_KEY(home));
+  if (!pending) return false;
+  const who = whoAmIRequest(home, pending);
+  const res = await fetch(who.url, who.init).catch(() => null);
+  if (!res?.ok) return false; // not claimed yet — keep it pending
+  const me = await res.json().catch(() => ({}));
+  sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
+  sessionStorage.setItem(TOKEN_KEY(home), pending); // session only
+  poseTokenInput.value = pending;
+  syncPoseHelp();
+  poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
+  return true;
+}
+
 document.getElementById('pose-toggle').addEventListener('click', () => {
   posePanel.hidden = !posePanel.hidden;
   if (!posePanel.hidden) {
     poseTokenInput.value = storedToken();
     poseStatus.textContent = POSE_STATUS_DEFAULT;
     syncPosePanel();
+    if (!poseTokenInput.value) adoptPendingToken(); // fire-and-forget check
   }
 });
 
@@ -330,6 +352,8 @@ poseConnectBtn.addEventListener('click', async () => {
     const res = await fetch(gen.url, gen.init);
     const parsed = parseGeneratedToken(await res.json());
     if (!parsed) throw new Error(`no claimable token from ${home}`);
+    // Survive the poll's lifetime: adopted later from panel-open/Save (#104).
+    sessionStorage.setItem(PENDING_TOKEN_KEY(home), parsed.jwt);
     if (claimTab) claimTab.location = parsed.claimUrl;
     else {
       // Popup blocked: hand the claim URL to the help link instead.
@@ -345,6 +369,7 @@ poseConnectBtn.addEventListener('click', async () => {
       const meRes = await fetch(who.url, who.init).catch(() => null);
       if (meRes?.ok) {
         const me = await meRes.json().catch(() => ({}));
+        sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
         sessionStorage.setItem(TOKEN_KEY(home), parsed.jwt); // session only
         poseTokenInput.value = parsed.jwt;
         syncPoseHelp(); // token present — the manual fallback link disappears
@@ -352,7 +377,7 @@ poseConnectBtn.addEventListener('click', async () => {
         return;
       }
     }
-    poseStatus.textContent = 'Sign-in not completed in time — try Connect again, or paste a token.';
+    poseStatus.textContent = 'Still waiting for the sign-in — finish it in the opened tab, then press Save: the connection is picked up automatically.';
   } catch (err) {
     if (claimTab) claimTab.close();
     poseStatus.textContent = `Connect failed: ${err?.message || 'network error'}. You can paste a token instead.`;
@@ -376,7 +401,9 @@ document.getElementById('pose-reset').addEventListener('click', () => {
 });
 
 document.getElementById('pose-save').addEventListener('click', async () => {
-  const token = poseTokenInput.value.trim();
+  let token = poseTokenInput.value.trim();
+  // A sign-in finished after the poll gave up? Adopt it now and save through.
+  if (!token && await adoptPendingToken()) token = poseTokenInput.value.trim();
   if (!token) {
     poseStatus.textContent = 'No token — the correction stays in this browser only. Use Connect, or paste a Panoramax API token, to fix it at the source.';
     return;
