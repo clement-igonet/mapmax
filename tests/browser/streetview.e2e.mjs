@@ -529,7 +529,7 @@ if (nav.skipped) {
     const { map } = await import('./src/main.js');
     const ps = sv._photosphere();
     document.getElementById('pose-edit').click(); // re-enter edit mode (Esc closed it)
-    const rowShown = !document.getElementById('pose-pos-row').hidden;
+    const rowShown = !!document.querySelector('#pose-elev #pose-pad'); // pad lives in the translation cluster
     const anchor0 = [...ps.lngLat];
     const eye0 = ps._options.eyeHeight;
     // Look down a bit so the ground raycast has a floor to grab.
@@ -582,7 +582,7 @@ if (nav.skipped) {
              anchorRestored: Math.abs(anchorReset[0] - anchor0[0]) < 1e-12 && Math.abs(anchorReset[1] - anchor0[1]) < 1e-12,
              eyeRestored: Math.abs(eyeReset - eye0) < 1e-9 };
   });
-  assert.ok(posn.rowShown, 'position row not shown in edit mode (#107)');
+  assert.ok(posn.rowShown, 'compass pad not in the translation cluster (#107)');
   assert.ok(posn.elevShown, 'elevation gauge not shown in edit mode (#107)');
   assert.ok(posn.anchorMoved, '⇧-drag did not move the anchor (#107)');
   assert.ok(posn.offsetTracked, 'position offset not tracked in metres (#107)');

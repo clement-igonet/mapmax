@@ -93,7 +93,6 @@ function revealStreetUI() {
   document.getElementById('exit-street').hidden = false;
   document.getElementById('blend-control').hidden = false;
   document.getElementById('minimap').hidden = false;
-  document.getElementById('flip-pano').hidden = false;
   document.getElementById('pose-toggle').hidden = false;
 }
 let currentPic = null;
@@ -218,7 +217,6 @@ const leaveStreetUI = () => {
   exitBtn.hidden = true;
   document.getElementById('blend-control').hidden = true;
   document.getElementById('minimap').hidden = true;
-  document.getElementById('flip-pano').hidden = true;
   document.getElementById('pose-toggle').hidden = true;
   document.getElementById('pose-panel').hidden = true;
   setEditModeUI(false); // never leave photo-drag mode armed outside the panel (#106)
@@ -399,12 +397,12 @@ function syncRing() {
   poseRing.style.transform = `rotate(${getCurrentPose()?.roll || 0}deg)`;
 }
 
-// Position read-out (#107): metre offsets east/north/up of the current pano.
-const posRow = document.getElementById('pose-pos-row');
+// Translation read-out (#107): metre offsets east/north of the current pano
+// (ΔH has its own read-out under the elevation scale).
 const posVal = document.getElementById('pose-pos-val');
 function syncPosVal() {
   const o = getCurrentPositionOffset();
-  if (o) posVal.textContent = `ΔE ${o.e.toFixed(1)} · ΔN ${o.n.toFixed(1)} · ΔH ${o.u.toFixed(2)} m`;
+  if (o) posVal.textContent = `ΔE ${o.e.toFixed(1)} · ΔN ${o.n.toFixed(1)} m`;
 }
 
 // Elevation scale (#107): a vertical gauge right of the ring — the handle
@@ -484,13 +482,12 @@ function setEditModeUI(on) {
   poseEditBtn.classList.toggle('active', actual);
   poseRing.hidden = !actual;
   poseElev.hidden = !actual;
-  posRow.hidden = !actual;
   minimapEl.classList.toggle('minimap-editable', actual);
   if (actual) {
     syncRing();
     syncElev();
     syncPosVal();
-    poseStatus.textContent = 'Edit mode — drag the photo to turn/tilt it, ring = horizon, scale = eye height, ⇧-drag or drag the minimap = move the position. Esc leaves edit mode.';
+    poseStatus.textContent = 'Edit mode — rotate: drag the photo (ring = horizon, flip = 180°). Move: arrows/scale on the right, ⇧-drag the ground, or drag the minimap. Esc leaves edit mode.';
   }
   return actual;
 }

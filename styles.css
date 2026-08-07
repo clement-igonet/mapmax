@@ -99,30 +99,12 @@ body {
   background: rgba(50, 50, 60, 0.95);
 }
 
-/* Manual 180° flip for mis-oriented sequences (#69) — below the exit button. */
-#flip-pano {
-  position: absolute;
-  top: 56px;
-  right: 50px;
-  z-index: 20;
-  background: rgba(20, 20, 24, 0.85);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-#flip-pano:hover {
-  background: rgba(50, 50, 60, 0.95);
-}
-
-/* Pose leveller (#98) — below the flip button; the panel it toggles holds the
-   pitch/roll/yaw sliders and the Panoramax write-back. */
+/* Panorama editor toggle (#98) — below the back button; the panel it opens
+   holds the rotation cluster and the Panoramax write-back. The 180° flip
+   lives INSIDE the panel now (it is a rotation). */
 #pose-toggle {
   position: absolute;
-  top: 96px;
+  top: 56px;
   right: 50px;
   z-index: 20;
   background: rgba(20, 20, 24, 0.85);
@@ -140,7 +122,7 @@ body {
 
 #pose-panel {
   position: absolute;
-  top: 136px;
+  top: 96px;
   right: 50px;
   z-index: 20;
   width: 250px;
@@ -209,8 +191,9 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* Pose edit mode (#106): toggle + the roll ring. */
-#pose-edit {
+/* Pose edit mode (#106): toggle + flip chip + the roll ring. */
+#pose-edit,
+#flip-pano {
   background: rgb(52, 54, 60); /* opaque — sits directly over the photo now */
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -220,7 +203,8 @@ body {
   cursor: pointer;
 }
 
-#pose-edit:hover {
+#pose-edit:hover,
+#flip-pano:hover {
   background: rgb(66, 68, 76);
 }
 
@@ -268,27 +252,28 @@ body {
   color: rgba(255, 255, 255, 0.85);
 }
 
-/* Elevation scale (#107): a small vertical gauge chip right of the roll ring. */
+/* Translation cluster (#107): compass pad + elevation scale + Δ read-outs in
+   one small chip right of the (rotation) ring. */
 #pose-elev {
   position: absolute;
-  top: calc(50% - 110px);
+  top: calc(50% - 130px);
   left: calc(50% + 160px);
   z-index: 19;
-  width: 34px;
-  height: 220px;
+  width: 84px;
   background: rgb(24, 25, 28);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 8px;
-  padding: 8px 0 20px;
+  padding: 8px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 6px;
 }
 
 #pose-elev-track {
   position: relative;
   width: 4px;
-  flex: 1;
+  height: 130px;
   background: rgba(255, 255, 255, 0.35);
   border-radius: 2px;
 }
