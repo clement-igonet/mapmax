@@ -10,6 +10,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | PR(s) | State |
 |---|---|---|---|
+| [#104](https://github.com/clement-igonet/mapmax/issues/104) | "Connect to Panoramax" (OAuth claim flow) — automate token retrieval | [#105](https://github.com/clement-igonet/mapmax/pull/105) (draft) | handshake + late-claim adoption implemented; panel-rendering hardened for a hostile GPU/Chrome (plain DOM, opaque bg); claim flow reaches "Connexion terminée" on [sandbox](https://sandbox.mapmax.confinia.io) — final user round-trip pending |
 | [#103](https://github.com/clement-igonet/mapmax/issues/103) | Adopt stock MapLibre ≥ v6.20 (with #8057) on all envs | — | promotion path decided; **blocked upstream** (latest v6.1.0, [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) open) |
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); branch-deploy flow still manual |
@@ -18,7 +19,8 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Notes |
 |---|---|---|
-| [#104](https://github.com/clement-igonet/mapmax/issues/104) | "Connect to Panoramax" (OAuth claim flow) — automate token retrieval | follow-up to #98; API claim flow confirmed |
+| [#106](https://github.com/clement-igonet/mapmax/issues/106) | Pose edit mode: rotate the photosphere graphically (drag yaw/pitch, ring roll) | UX successor to the #98 sliders (kept as read-out) |
+| [#107](https://github.com/clement-igonet/mapmax/issues/107) | Position edit mode: move a pano on the map (lat/lon) + altitude | lat/lon PATCHable (v2.8.0); altitude has NO API field — local-only + upstream ask |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
 | [#87](https://github.com/clement-igonet/mapmax/issues/87) | Position-only tile/LOD (app-level) | app-side mitigations shipped (#87 gate pin, #95 clip); full fix tracked upstream via #94 |
