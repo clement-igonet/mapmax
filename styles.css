@@ -401,6 +401,25 @@ body {
   width: 200px;
 }
 
+/* Street-only chrome NEVER paints outside street mode, whatever the JS state:
+   the plugin stamps body.street-mode on enter and removes it on exit, so this
+   gate closes every teardown race for good (#107 report: edit-mode panel and
+   elevation gauge survived into map mode). !important so it also beats the
+   flex/display values that would otherwise override the `hidden` attribute. */
+body:not(.street-mode) #pose-panel,
+body:not(.street-mode) #pose-ring,
+body:not(.street-mode) #pose-elev,
+body:not(.street-mode) #pose-toggle,
+body:not(.street-mode) #flip-pano,
+body:not(.street-mode) #exit-street,
+body:not(.street-mode) #blend-control,
+body:not(.street-mode) #minimap,
+#pose-panel[hidden],
+#pose-ring[hidden],
+#pose-elev[hidden] {
+  display: none !important;
+}
+
 /* The MapLibre canvas is transparent where nothing renders; at the very-low
    street camera the lower/upper frustum is uncovered, so without this the page
    white shows as an empty void. Fill the container with the ground tone so the
