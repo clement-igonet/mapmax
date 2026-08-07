@@ -229,24 +229,60 @@ body {
   border-color: #2962ff;
 }
 
-#pose-pos-row button {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-#pose-pos-row button:hover {
-  background: rgba(255, 255, 255, 0.22);
-}
-
+#pose-rot-val,
 #pose-pos-val {
   flex: 1;
-  text-align: right;
+  text-align: center;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Elevation scale (#107): a small vertical gauge chip right of the roll ring. */
+#pose-elev {
+  position: absolute;
+  top: calc(50% - 110px);
+  left: calc(50% + 160px);
+  z-index: 19;
+  width: 34px;
+  height: 220px;
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 8px 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#pose-elev-track {
+  position: relative;
+  width: 4px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 2px;
+}
+
+#pose-elev-handle {
+  position: absolute;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: #2962ff;
+  border: 2px solid #fff;
+  cursor: grab;
+}
+
+#pose-elev-handle:active {
+  cursor: grabbing;
+}
+
+#pose-elev-val {
+  margin-top: 6px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: rgba(255, 255, 255, 0.85);
 }
@@ -330,6 +366,18 @@ body {
   height: 132px;
   border-radius: 50%;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* In edit mode the minimap is a position editor (#107): drag it to move the
+   panorama on the 2D ground plan. */
+#minimap.minimap-editable {
+  cursor: grab;
+  outline: 2px dashed rgba(41, 98, 255, 0.8);
+  outline-offset: 2px;
+}
+
+#minimap.minimap-editable:active {
+  cursor: grabbing;
 }
 
 #blend-control {

@@ -425,23 +425,24 @@ if (nav.skipped) {
   assert.ok(manual.overridden, 'flip override not persisted (#69)');
   console.log('[e2e] manual 180° flip button works & persists (#69) OK');
 
-  // #98 pose leveller: the panel opens from street mode, the sliders live-apply
-  // pitch/roll to the photosphere (shader pose), and the correction persists
-  // per sequence in localStorage (the anonymous fallback; the token path PATCHes
-  // Panoramax and is covered by unit tests on the request builder).
+  // #98 pose leveller (drag-first since #106): the panel opens from street
+  // mode, setCurrentPose live-applies pitch/roll to the shader, the read-out
+  // mirrors it, and the correction persists per sequence in localStorage (the
+  // anonymous fallback; the token path PATCHes Panoramax and is covered by
+  // unit tests on the request builder).
   const pose = await page.evaluate(async () => {
     const sv = await import('./src/streetview.js');
     const toggle = document.getElementById('pose-toggle');
     toggle.click();
     const panelOpen = !document.getElementById('pose-panel').hidden;
     const before = sv._photosphere().getPanoPose();
-    const pitchSlider = document.getElementById('pose-pitch');
-    pitchSlider.value = '-6';
-    pitchSlider.dispatchEvent(new Event('input'));
-    const rollSlider = document.getElementById('pose-roll');
-    rollSlider.value = '3';
-    rollSlider.dispatchEvent(new Event('input'));
+    sv.setCurrentPose({ pitch: -6, roll: 3 });
     const after = sv._photosphere().getPanoPose();
+    // The panel read-out mirrors the pose (sliders replaced by gestures, #106):
+    // re-opening the panel runs the sync path.
+    toggle.click();
+    toggle.click();
+    const readout = document.getElementById('pose-rot-val').textContent;
     // Persistence is debounced (~250 ms) so drags don't hammer localStorage —
     // wait for the flush before reading it back.
     await new Promise((r) => setTimeout(r, 450));
@@ -450,7 +451,7 @@ if (nav.skipped) {
     // Reset so the leveller leaves no residue for later runs/assertions.
     document.getElementById('pose-reset').click();
     const reset = sv._photosphere().getPanoPose();
-    return { visible: !toggle.hidden, panelOpen, before, after, stored, reset };
+    return { visible: !toggle.hidden, panelOpen, before, after, readout, stored, reset };
   });
   assert.ok(pose.visible, 'pose leveller button not visible in street mode (#98)');
   assert.ok(pose.panelOpen, 'pose panel did not open (#98)');
@@ -462,11 +463,12 @@ if (nav.skipped) {
   });
   assert.ok(connectPresent, 'Connect to Panoramax button missing from the pose panel (#104)');
   assert.equal(pose.before.pitch, 0, 'pose pitch should start at the metadata value (#98)');
-  assert.equal(pose.after.pitch, -6, 'pitch slider not live-applied to the shader pose (#98)');
-  assert.equal(pose.after.roll, 3, 'roll slider not live-applied to the shader pose (#98)');
+  assert.equal(pose.after.pitch, -6, 'pitch not live-applied to the shader pose (#98)');
+  assert.equal(pose.after.roll, 3, 'roll not live-applied to the shader pose (#98)');
+  assert.match(pose.readout, /Pitch -6\.0° · Roll 3\.0°/, `read-out does not mirror the pose (#106): ${pose.readout}`);
   assert.deepEqual({ pitch: pose.stored?.pitch, roll: pose.stored?.roll }, { pitch: -6, roll: 3 }, 'pose not persisted per sequence in localStorage (#98)');
   assert.equal(pose.reset.pitch, 0, 'pose reset did not restore the metadata orientation (#98)');
-  console.log('[e2e] pose leveller live-applies pitch/roll & persists locally (#98) OK');
+  console.log('[e2e] pose leveller live-applies pitch/roll, read-out mirrors, persists locally (#98/#106) OK');
 
   // #106 pose edit mode: drags rotate the PHOTO (camera untouched), the ring
   // rolls it, Esc peels edit mode first (still inside), look-around returns.
@@ -540,8 +542,24 @@ if (nav.skipped) {
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 700, clientY: 600, bubbles: true, shiftKey: true }));
     const anchor1 = [...ps.lngLat];
     const offset = sv.getCurrentPositionOffset();
-    document.getElementById('pose-alt-up').click();
+    // Elevation gauge (#107): drag the handle a quarter of the track upward.
+    const elevShown = !document.getElementById('pose-elev').hidden;
+    const track = document.getElementById('pose-elev-track').getBoundingClientRect();
+    const handle = document.getElementById('pose-elev-handle');
+    const startY = track.top + track.height * (6 / 9); // u = 0 position
+    handle.dispatchEvent(new PointerEvent('pointerdown', { clientX: track.left, clientY: startY, bubbles: true, pointerId: 9 }));
+    handle.dispatchEvent(new PointerEvent('pointermove', { clientX: track.left, clientY: startY - track.height / 9, bubbles: true, pointerId: 9 }));
+    handle.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 9 }));
     const eye1 = ps._options.eyeHeight;
+    const uAfterGauge = sv.getCurrentPositionOffset().u;
+    // Minimap drag (#107): dragging the minimap moves the position on the plan.
+    const mm = document.getElementById('minimap');
+    const mmEditable = mm.classList.contains('minimap-editable');
+    const eBeforeMm = sv.getCurrentPositionOffset().e;
+    mm.dispatchEvent(new PointerEvent('pointerdown', { clientX: 60, clientY: 60, bubbles: true, pointerId: 11 }));
+    mm.dispatchEvent(new PointerEvent('pointermove', { clientX: 40, clientY: 60, bubbles: true, pointerId: 11 }));
+    mm.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 11 }));
+    const mmMoved = Math.abs(sv.getCurrentPositionOffset().e - eBeforeMm) > 5;
     // Persistence is debounced — wait, then check the per-picture store.
     await new Promise((r) => setTimeout(r, 450));
     const stored = Object.keys(localStorage).filter((k) => k.startsWith('mapmax:pos:'))
@@ -551,22 +569,26 @@ if (nav.skipped) {
     const anchorReset = [...ps.lngLat];
     const eyeReset = ps._options.eyeHeight;
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); // leave edit mode
-    return { rowShown,
+    return { rowShown, elevShown, mmEditable, mmMoved,
              anchorMoved: anchor1[0] !== anchor0[0],
              offsetTracked: !!offset && Math.abs(offset.e) > 0.1,
-             eyeRaised: Math.abs(eye1 - (eye0 + 0.25)) < 1e-9,
+             eyeRaised: eye1 > eye0 + 0.5,
+             uAfterGauge,
              storedE: stored?.e, storedU: stored?.u,
              anchorRestored: Math.abs(anchorReset[0] - anchor0[0]) < 1e-12 && Math.abs(anchorReset[1] - anchor0[1]) < 1e-12,
              eyeRestored: Math.abs(eyeReset - eye0) < 1e-9 };
   });
   assert.ok(posn.rowShown, 'position row not shown in edit mode (#107)');
+  assert.ok(posn.elevShown, 'elevation gauge not shown in edit mode (#107)');
   assert.ok(posn.anchorMoved, '⇧-drag did not move the anchor (#107)');
   assert.ok(posn.offsetTracked, 'position offset not tracked in metres (#107)');
-  assert.ok(posn.eyeRaised, 'altitude button did not raise the eye by 25 cm (#107)');
+  assert.ok(posn.eyeRaised && posn.uAfterGauge > 0.5, `elevation gauge did not raise the eye (~1 m drag) (#107): ${JSON.stringify(posn)}`);
+  assert.ok(posn.mmEditable, 'minimap not marked editable in edit mode (#107)');
+  assert.ok(posn.mmMoved, 'minimap drag did not move the position (#107)');
   assert.ok(Math.abs(posn.storedE) > 0.1, `position not persisted per picture (#107): ${JSON.stringify(posn)}`);
-  assert.equal(posn.storedU, 0.25, 'altitude not persisted (#107)');
+  assert.ok(posn.storedU > 0.5, 'altitude not persisted (#107)');
   assert.ok(posn.anchorRestored && posn.eyeRestored, 'reset did not restore GPS anchor + eye height (#107)');
-  console.log('[e2e] position edit: shift-drag ground move + altitude, persisted & resettable (#107) OK');
+  console.log('[e2e] position edit: shift-drag + minimap move + elevation gauge, persisted & resettable (#107) OK');
 }
 
 

@@ -248,19 +248,10 @@ const posePanel = document.getElementById('pose-panel');
 const poseStatus = document.getElementById('pose-status');
 const poseTokenInput = document.getElementById('pose-token');
 const POSE_STATUS_DEFAULT = poseStatus.textContent;
-const poseSliders = {
-  pitch: document.getElementById('pose-pitch'),
-  roll: document.getElementById('pose-roll'),
-  yaw: document.getElementById('pose-yaw'),
-};
-const poseVals = {
-  pitch: document.getElementById('pose-pitch-val'),
-  roll: document.getElementById('pose-roll-val'),
-  yaw: document.getElementById('pose-yaw-val'),
-};
-// The yaw slider edits the offset in ±180 around the GPS direction; storage
-// and the PATCH API use [0,360).
-const yawToSlider = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
+// The gestures ARE the controls (#106); this read-out just mirrors them.
+// Yaw is shown in ±180 around the GPS direction; storage/PATCH use [0,360).
+const poseRotVal = document.getElementById('pose-rot-val');
+const yawToSigned = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
 
 // The manual token link is a FALLBACK: pointless once a token is present
 // (connected or pasted), so it only shows while the field is empty (#104).
@@ -273,10 +264,8 @@ poseTokenInput.addEventListener('input', syncPoseHelp);
 function syncPosePanel() {
   const pose = getCurrentPose();
   if (!pose || posePanel.hidden) return;
-  poseSliders.pitch.value = String(pose.pitch);
-  poseSliders.roll.value = String(pose.roll);
-  poseSliders.yaw.value = String(yawToSlider(pose.yaw));
-  for (const k of ['pitch', 'roll', 'yaw']) poseVals[k].textContent = `${poseSliders[k].value}°`;
+  poseRotVal.textContent =
+    `Pitch ${pose.pitch.toFixed(1)}° · Roll ${pose.roll.toFixed(1)}° · Yaw ${yawToSigned(pose.yaw).toFixed(0)}°`;
   // Token help goes to the CURRENT picture's home instance (that's where the
   // PATCH lands): sign in there, then this endpoint lists your tokens.
   const home = currentPicture()?.homeApi;
@@ -389,20 +378,13 @@ poseConnectBtn.addEventListener('click', async () => {
   }
 });
 
-for (const k of ['pitch', 'roll', 'yaw']) {
-  poseSliders[k].addEventListener('input', () => {
-    const v = parseFloat(poseSliders[k].value);
-    poseVals[k].textContent = `${poseSliders[k].value}°`;
-    setCurrentPose({ [k]: k === 'yaw' ? (v + 360) % 360 : v });
-  });
-}
-
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
   resetCurrentPosition(); // #107: back to the GPS position and default eye height
   syncPosePanel();
   syncRing();
   syncPosVal();
+  syncElev();
   poseStatus.textContent = 'Pose and position reset to the picture metadata.';
 });
 
@@ -425,27 +407,83 @@ function syncPosVal() {
   if (o) posVal.textContent = `ΔE ${o.e.toFixed(1)} · ΔN ${o.n.toFixed(1)} · ΔH ${o.u.toFixed(2)} m`;
 }
 
+// Elevation scale (#107): a vertical gauge right of the ring — the handle
+// position maps linearly onto the eye-height offset range.
+const ELEV_MIN = -3, ELEV_MAX = 6;
+const poseElev = document.getElementById('pose-elev');
+const poseElevTrack = document.getElementById('pose-elev-track');
+const poseElevHandle = document.getElementById('pose-elev-handle');
+const poseElevVal = document.getElementById('pose-elev-val');
+function syncElev() {
+  if (poseElev.hidden) return;
+  const u = getCurrentPositionOffset()?.u || 0;
+  const frac = (ELEV_MAX - u) / (ELEV_MAX - ELEV_MIN); // 0 at top (+6) … 1 at bottom (−3)
+  poseElevHandle.style.top = `${(frac * 100).toFixed(2)}%`;
+  poseElevVal.textContent = `${u >= 0 ? '+' : ''}${u.toFixed(2)} m`;
+}
+let elevDragging = false;
+const elevFromPointer = (e) => {
+  const r = poseElevTrack.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+  return ELEV_MAX - frac * (ELEV_MAX - ELEV_MIN);
+};
+poseElevHandle.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  try { poseElevHandle.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+  elevDragging = true;
+});
+poseElevHandle.addEventListener('pointermove', (e) => {
+  if (!elevDragging) return;
+  const target = elevFromPointer(e);
+  const now = getCurrentPositionOffset()?.u || 0;
+  nudgeCurrentPosition({ upM: target - now });
+  syncElev();
+  syncPosVal();
+});
+poseElevHandle.addEventListener('pointerup', () => { elevDragging = false; });
+poseElevHandle.addEventListener('pointercancel', () => { elevDragging = false; });
+
+// Minimap drag (#107): in edit mode, dragging the minimap moves the panorama
+// on the 2D ground plan — grab-the-world: the dots follow the cursor. The
+// minimap draws at a fixed metric scale (0.6 m/px, minimap.js).
+const MINIMAP_M_PER_PX = 0.6;
+const minimapEl = document.getElementById('minimap');
+let minimapDrag = null;
+minimapEl.addEventListener('pointerdown', (e) => {
+  if (!isPoseEditMode()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try { minimapEl.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+  minimapDrag = { x: e.clientX, y: e.clientY };
+});
+minimapEl.addEventListener('pointermove', (e) => {
+  if (!minimapDrag) return;
+  const dx = e.clientX - minimapDrag.x;
+  const dy = e.clientY - minimapDrag.y;
+  minimapDrag = { x: e.clientX, y: e.clientY };
+  // Screen y grows southward on the north-up minimap.
+  nudgeCurrentPosition({ eastM: -dx * MINIMAP_M_PER_PX, northM: dy * MINIMAP_M_PER_PX });
+  syncPosVal();
+});
+minimapEl.addEventListener('pointerup', () => { minimapDrag = null; });
+minimapEl.addEventListener('pointercancel', () => { minimapDrag = null; });
+
 function setEditModeUI(on) {
-  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); syncPosVal(); });
+  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); syncPosVal(); syncElev(); });
   poseEditBtn.classList.toggle('active', actual);
   poseRing.hidden = !actual;
+  poseElev.hidden = !actual;
   posRow.hidden = !actual;
+  minimapEl.classList.toggle('minimap-editable', actual);
   if (actual) {
     syncRing();
+    syncElev();
     syncPosVal();
-    poseStatus.textContent = 'Edit mode — drag the photo to turn/tilt it, ring = horizon, ⇧-drag = move on the ground, ▲▼ = eye height. Esc leaves edit mode.';
+    poseStatus.textContent = 'Edit mode — drag the photo to turn/tilt it, ring = horizon, scale = eye height, ⇧-drag or drag the minimap = move the position. Esc leaves edit mode.';
   }
   return actual;
 }
-
-document.getElementById('pose-alt-up').addEventListener('click', () => {
-  nudgeCurrentPosition({ upM: 0.25 });
-  syncPosVal();
-});
-document.getElementById('pose-alt-down').addEventListener('click', () => {
-  nudgeCurrentPosition({ upM: -0.25 });
-  syncPosVal();
-});
 
 poseEditBtn.addEventListener('click', () => {
   const on = setEditModeUI(!isPoseEditMode());
