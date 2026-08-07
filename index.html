@@ -22,7 +22,13 @@
     <button type="button" id="flip-pano" title="Photo direction looks reversed? Flip this sequence 180° (#69)" hidden>↺ 180°</button>
     <button type="button" id="pose-toggle" title="Horizon tilted or offset? Level this panorama (pitch / roll / yaw) (#98)" hidden>⌖ Level</button>
     <div id="pose-panel" hidden>
-      <button type="button" id="pose-edit" title="Rotate the photo directly: drag = yaw/pitch, ring = roll (#106)">🖐 Adjust by dragging the photo</button>
+      <button type="button" id="pose-edit" title="Rotate the photo directly: drag = yaw/pitch, ring = roll (#106); ⇧-drag moves it on the ground (#107)">🖐 Adjust by dragging the photo</button>
+      <div class="pose-row" id="pose-pos-row" hidden>
+        <label title="⇧-drag the ground to move the panorama; ▲▼ adjust the eye height (25 cm)">Pos</label>
+        <button type="button" id="pose-alt-down" title="Lower the eye by 25 cm">▼</button>
+        <button type="button" id="pose-alt-up" title="Raise the eye by 25 cm">▲</button>
+        <span id="pose-pos-val">ΔE 0.0 · ΔN 0.0 · ΔH 0.00 m</span>
+      </div>
       <div class="pose-row">
         <label for="pose-pitch">Pitch</label>
         <input type="range" id="pose-pitch" min="-45" max="45" step="0.5" value="0" aria-label="Capture pitch correction (degrees)">

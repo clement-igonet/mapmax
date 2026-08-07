@@ -516,6 +516,54 @@ if (nav.skipped) {
   assert.ok(edit.stillInside, 'Esc in edit mode must NOT exit street view (#106)');
   assert.ok(edit.lookRestored, 'look-around not restored after edit mode (#106)');
   console.log('[e2e] pose edit mode: photo drag + roll ring, Esc layering, look restored (#106) OK');
+
+  // #107 position edit: ⇧-drag moves the anchor on the ground plane, the ▲▼
+  // buttons adjust the eye height, both persist per picture.
+  const posn = await page.evaluate(async () => {
+    const sv = await import('./src/streetview.js');
+    const { map } = await import('./src/main.js');
+    const ps = sv._photosphere();
+    document.getElementById('pose-edit').click(); // re-enter edit mode (Esc closed it)
+    const rowShown = !document.getElementById('pose-pos-row').hidden;
+    const anchor0 = [...ps.lngLat];
+    const eye0 = ps._options.eyeHeight;
+    // Look down a bit so the ground raycast has a floor to grab.
+    ps._pitchDeg = -30;
+    const container = map.getContainer();
+    container.dispatchEvent(new MouseEvent('mousedown', { clientX: 640, clientY: 600, bubbles: true, shiftKey: true }));
+    for (let i = 1; i <= 4; i++) {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 640 + i * 15, clientY: 600, bubbles: true, shiftKey: true }));
+    }
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 700, clientY: 600, bubbles: true, shiftKey: true }));
+    const anchor1 = [...ps.lngLat];
+    const offset = sv.getCurrentPositionOffset();
+    document.getElementById('pose-alt-up').click();
+    const eye1 = ps._options.eyeHeight;
+    // Persistence is debounced — wait, then check the per-picture store.
+    await new Promise((r) => setTimeout(r, 450));
+    const stored = Object.keys(localStorage).filter((k) => k.startsWith('mapmax:pos:'))
+      .map((k) => JSON.parse(localStorage.getItem(k)))[0];
+    // Reset restores the GPS anchor and default eye height.
+    document.getElementById('pose-reset').click();
+    const anchorReset = [...ps.lngLat];
+    const eyeReset = ps._options.eyeHeight;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); // leave edit mode
+    return { rowShown,
+             anchorMoved: anchor1[0] !== anchor0[0],
+             offsetTracked: !!offset && Math.abs(offset.e) > 0.1,
+             eyeRaised: Math.abs(eye1 - (eye0 + 0.25)) < 1e-9,
+             storedE: stored?.e, storedU: stored?.u,
+             anchorRestored: Math.abs(anchorReset[0] - anchor0[0]) < 1e-12 && Math.abs(anchorReset[1] - anchor0[1]) < 1e-12,
+             eyeRestored: Math.abs(eyeReset - eye0) < 1e-9 };
+  });
+  assert.ok(posn.rowShown, 'position row not shown in edit mode (#107)');
+  assert.ok(posn.anchorMoved, '⇧-drag did not move the anchor (#107)');
+  assert.ok(posn.offsetTracked, 'position offset not tracked in metres (#107)');
+  assert.ok(posn.eyeRaised, 'altitude button did not raise the eye by 25 cm (#107)');
+  assert.ok(Math.abs(posn.storedE) > 0.1, `position not persisted per picture (#107): ${JSON.stringify(posn)}`);
+  assert.equal(posn.storedU, 0.25, 'altitude not persisted (#107)');
+  assert.ok(posn.anchorRestored && posn.eyeRestored, 'reset did not restore GPS anchor + eye height (#107)');
+  console.log('[e2e] position edit: shift-drag ground move + altitude, persisted & resettable (#107) OK');
 }
 
 

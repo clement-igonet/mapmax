@@ -39,11 +39,17 @@ export function buildPosePatch(pose) {
 // Full fetch() arguments for the write-back — pure so the whole request is
 // unit-tested without network. null when there is nothing to send.
 // The browser calls Panoramax directly with the user's token (front-end only, R3).
-export function posePatchRequest(apiBase, collectionId, itemId, pose, token) {
+// `position` (optional, #107): corrected ABSOLUTE {latitude, longitude} —
+// PATCHable since v2.8.0. Altitude has no API field and never leaves the app.
+export function posePatchRequest(apiBase, collectionId, itemId, pose, token, position) {
   if (!token) throw new Error('posePatchRequest: a Panoramax token is required');
   if (!collectionId || !itemId) throw new Error('posePatchRequest: collectionId and itemId are required');
-  const body = buildPosePatch(pose);
-  if (!body) return null;
+  const body = buildPosePatch(pose) || {};
+  if (Number.isFinite(position?.latitude) && Number.isFinite(position?.longitude)) {
+    body.latitude = position.latitude;
+    body.longitude = position.longitude;
+  }
+  if (!Object.keys(body).length) return null;
   return {
     url: `${apiBase}/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(itemId)}`,
     init: {
@@ -195,3 +201,17 @@ export function composePoseGesture(pose, camera, { aboutUp = 0, aboutRight = 0, 
 
 // localStorage key for the per-sequence pose fallback (anonymous users, #98).
 export const POSE_STORE_KEY = (seqOrPicId) => `mapmax:pose:${seqOrPicId}`;
+
+// --- Position correction (#107) ---------------------------------------------
+// GPS noise is a TRANSLATION error; the override is stored per PICTURE (unlike
+// pose, which is per sequence) as metres {e, n, u} east/north/up.
+
+export const POSITION_STORE_KEY = (picId) => `mapmax:pos:${picId}`;
+
+// Apply an east/north offset in metres to a lon/lat (equirectangular local
+// approximation — exact enough for the few metres GPS correction needs).
+export function offsetLngLat(lon, lat, eastM, northM) {
+  const dLat = northM / 111320;
+  const dLon = eastM / (111320 * Math.cos((lat * Math.PI) / 180));
+  return [lon + dLon, lat + dLat];
+}

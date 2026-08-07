@@ -5,7 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, ST
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isPoseEditMode, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
+import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, savePoseToPanoramax, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, PENDING_TOKEN_KEY, TOKEN_KEY } from './panoramaxauth.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
@@ -399,9 +399,11 @@ for (const k of ['pitch', 'roll', 'yaw']) {
 
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
+  resetCurrentPosition(); // #107: back to the GPS position and default eye height
   syncPosePanel();
   syncRing();
-  poseStatus.textContent = 'Pose reset to the metadata orientation.';
+  syncPosVal();
+  poseStatus.textContent = 'Pose and position reset to the picture metadata.';
 });
 
 // Pose edit mode (#106): drag rotates the photo (yaw/pitch), the ring rolls it.
@@ -415,16 +417,35 @@ function syncRing() {
   poseRing.style.transform = `rotate(${getCurrentPose()?.roll || 0}deg)`;
 }
 
+// Position read-out (#107): metre offsets east/north/up of the current pano.
+const posRow = document.getElementById('pose-pos-row');
+const posVal = document.getElementById('pose-pos-val');
+function syncPosVal() {
+  const o = getCurrentPositionOffset();
+  if (o) posVal.textContent = `ΔE ${o.e.toFixed(1)} · ΔN ${o.n.toFixed(1)} · ΔH ${o.u.toFixed(2)} m`;
+}
+
 function setEditModeUI(on) {
-  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); });
+  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); syncPosVal(); });
   poseEditBtn.classList.toggle('active', actual);
   poseRing.hidden = !actual;
+  posRow.hidden = !actual;
   if (actual) {
     syncRing();
-    poseStatus.textContent = 'Edit mode — drag the photo to turn/tilt it, use the ring to straighten the horizon. Esc leaves edit mode.';
+    syncPosVal();
+    poseStatus.textContent = 'Edit mode — drag the photo to turn/tilt it, ring = horizon, ⇧-drag = move on the ground, ▲▼ = eye height. Esc leaves edit mode.';
   }
   return actual;
 }
+
+document.getElementById('pose-alt-up').addEventListener('click', () => {
+  nudgeCurrentPosition({ upM: 0.25 });
+  syncPosVal();
+});
+document.getElementById('pose-alt-down').addEventListener('click', () => {
+  nudgeCurrentPosition({ upM: -0.25 });
+  syncPosVal();
+});
 
 poseEditBtn.addEventListener('click', () => {
   const on = setEditModeUI(!isPoseEditMode());
@@ -471,7 +492,7 @@ document.getElementById('pose-save').addEventListener('click', async () => {
   poseStatus.textContent = 'Saving pose to Panoramax…';
   const res = await savePoseToPanoramax(token);
   poseStatus.textContent = res.ok
-    ? 'Saved — the pose is now corrected on Panoramax for every viewer.'
+    ? `Saved — pose${getCurrentPositionOffset()?.e || getCurrentPositionOffset()?.n ? ' and position' : ''} corrected on Panoramax for every viewer.${res.altitudeLocalOnly ? ' (Altitude has no API field — it stays local.)' : ''}`
     : `Save failed: ${res.error || res.status}. The correction still applies in this browser.`;
 });
 exitBtn.addEventListener('click', () => {
