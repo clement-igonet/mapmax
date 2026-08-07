@@ -566,11 +566,15 @@ if (nav.skipped) {
     const padStep = sv.getCurrentPositionOffset().e - eBeforePad;
     // Nav dots sit at FIXED world positions: a nudge moves the eye, so their
     // eye-relative offsets must re-derive (they must NOT ride the camera).
-    const poisBefore = (ps._navPois || []).map((p) => p.east);
+    const poisBefore = (ps._navPois || []).map((p) => ({ id: p.id, east: p.east }));
     document.querySelector('#pose-pad .pad-e').click();
-    const poisAfter = (ps._navPois || []).map((p) => p.east);
+    const poisAfter = (ps._navPois || []).map((p) => ({ id: p.id, east: p.east }));
+    // The rebuild re-sorts by distance — compare the SAME dot by id.
+    const pair = poisBefore
+      .map((b) => ({ b, a: poisAfter.find((p) => p.id === b.id) }))
+      .find((x) => x.a);
     const poiShiftOk = poisBefore.length === 0 ||
-      (poisAfter.length > 0 && Math.abs((poisBefore[0] - poisAfter[0]) - 0.3) < 1e-6);
+      (!!pair && Math.abs((pair.b.east - pair.a.east) - 0.3) < 1e-6);
     const poiCount = poisBefore.length;
     // Persistence is debounced — wait, then check the per-picture store.
     await new Promise((r) => setTimeout(r, 450));
