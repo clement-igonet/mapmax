@@ -144,13 +144,13 @@ body {
   right: 50px;
   z-index: 20;
   width: 250px;
-  /* Own compositor layer: without it the panel's children flicker/tear while
-     the WebGL canvas beneath repaints on every slider tick (#98). Deliberately
-     NO will-change here — permanently promoting the layer next to a full-screen
-     WebGL canvas can exhaust GPU layer memory on weaker machines, which paints
-     the panel blank/black and drops neighbouring overlays entirely. */
-  transform: translateZ(0);
-  background: rgba(20, 20, 24, 0.9);
+  /* NO layer promotion (no transform/will-change/animation) — on the affected
+     GPU/Chrome any promoted layer randomly skips painting (#98/#104 reports:
+     blank panel, blank background, hover shimmer). Plain DOM is the rendering
+     path of the standalone street buttons, which never glitched. Fully OPAQUE
+     background: alpha-blending a big overlay over the WebGL canvas is the
+     other classic driver edge-case, and 0.9 was near-opaque anyway. */
+  background: rgb(24, 25, 28);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
@@ -159,25 +159,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  /* Some GPU/Chrome combos never repaint this layer above the WebGL canvas —
-     the panel showed blank until a hover forced a paint invalidation, and a
-     continuous (interpolated) pulse made hover styles shimmer on re-raster
-     (#104 reports). steps() makes the pulse DISCRETE: one cheap invalidation
-     per second — enough to un-stick a stale layer, no per-frame re-raster. */
-  animation: pose-panel-keepalive 2s steps(2, jump-none) infinite;
-}
-
-@keyframes pose-panel-keepalive {
-  from { background-color: rgba(20, 20, 24, 0.9); }
-  to { background-color: rgba(20, 21, 24, 0.9); }
-}
-
-/* Each panel child rasters as its own tiny unit — mirroring the standalone
-   street buttons (✕/180°/Level), which never glitched on the affected
-   machine: hover/click state then repaints atomically per element instead of
-   re-rastering the whole panel (#104 hover-shimmer / missed-click report). */
-#pose-panel > * {
-  transform: translateZ(0);
 }
 
 .pose-row {
