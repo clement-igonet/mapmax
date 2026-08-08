@@ -573,8 +573,10 @@ if (nav.skipped) {
     const pair = poisBefore
       .map((b) => ({ b, a: poisAfter.find((p) => p.id === b.id) }))
       .find((x) => x.a);
+    // 5 mm tolerance: the offset applies in equirectangular metres and reads
+    // back through the haversine pipeline (~0.03 % apart at this latitude).
     const poiShiftOk = poisBefore.length === 0 ||
-      (!!pair && Math.abs((pair.b.east - pair.a.east) - 0.3) < 1e-6);
+      (!!pair && Math.abs((pair.b.east - pair.a.east) - 0.3) < 5e-3);
     const poiCount = poisBefore.length;
     // Persistence is debounced — wait, then check the per-picture store.
     await new Promise((r) => setTimeout(r, 450));
