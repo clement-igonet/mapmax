@@ -293,9 +293,24 @@ export class Photosphere {
     }
 
     // Pose-edit mode (mapmax #106): while a callback is set, drags feed it
-    // (dxDeg, dyDeg) instead of moving the camera. null restores look-around.
+    // (dxDeg, dyDeg, {x, y, prevX, prevY, shiftKey}) instead of moving the
+    // camera. null restores look-around.
     setPoseEditDrag(cb) {
         this._poseEditDrag = typeof cb === 'function' ? cb : null;
+    }
+
+    // Move the anchor (and optionally the eye height) of the CURRENT panorama
+    // in place — the position-correction edit (mapmax #107).
+    setAnchor(lngLat, eyeHeight) {
+        if (Array.isArray(lngLat)) this._options.lngLat = lngLat;
+        if (typeof eyeHeight === 'number' && Number.isFinite(eyeHeight)) {
+            this._options.eyeHeight = Math.max(0.2, eyeHeight);
+        }
+        if (this._mode === 'inside') {
+            this._recalibrateLookTargetDistance();
+            this._updateCameraWhileInside();
+        }
+        this._map.triggerRepaint();
     }
 
     // Ground navigation arrows rendered inside the panorama layer (mapmax #26).
@@ -312,9 +327,10 @@ export class Photosphere {
         this._map.triggerRepaint();
     }
 
-    // The id of the arrow or POI dot under screen pixel (px, py), or null. Ray-
-    // casts the floor with the same view maths as the shader (works at any pitch).
-    groundPick(px, py) {
+    // Ground point (east, north) metres from the eye under screen pixel
+    // (px, py), or null above the horizon — the shared floor raycast behind
+    // groundPick and the position-edit shift-drag (mapmax #107).
+    groundPointAt(px, py) {
         const canvas = this._map.getCanvas();
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
@@ -334,7 +350,14 @@ export class Photosphere {
         ]);
         if (vd[2] >= -1e-4) return null; // not looking at the floor
         const t = -this._options.eyeHeight / vd[2];
-        const g = [vd[0] * t, vd[1] * t];
+        return [vd[0] * t, vd[1] * t];
+    }
+
+    // The id of the arrow or POI dot under screen pixel (px, py), or null. Ray-
+    // casts the floor with the same view maths as the shader (works at any pitch).
+    groundPick(px, py) {
+        const g = this.groundPointAt(px, py);
+        if (!g) return null;
         for (const a of this._navArrows) {
             const br = a.bearing * Math.PI / 180;
             const ap = [ARROW_GROUND_DIST * Math.sin(br), ARROW_GROUND_DIST * Math.cos(br)];
@@ -810,11 +833,15 @@ export class Photosphere {
         // camera — deltas are handed to the app which composes them onto the
         // pose (view-space rotation) and re-applies via setPanoPose().
         if (this._poseEditDrag) {
-            const dxDeg = (event.clientX - this._lastX) * dragSensitivity;
-            const dyDeg = (event.clientY - this._lastY) * dragSensitivity;
+            const prevX = this._lastX, prevY = this._lastY;
+            const dxDeg = (event.clientX - prevX) * dragSensitivity;
+            const dyDeg = (event.clientY - prevY) * dragSensitivity;
             this._lastX = event.clientX;
             this._lastY = event.clientY;
-            this._poseEditDrag(dxDeg, dyDeg);
+            this._poseEditDrag(dxDeg, dyDeg, {
+                x: event.clientX, y: event.clientY, prevX, prevY,
+                shiftKey: !!event.shiftKey,
+            });
             return;
         }
         this._yawDeg = (this._yawDeg - (event.clientX - this._lastX) * dragSensitivity + 360) % 360;

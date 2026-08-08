@@ -8,7 +8,7 @@ import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 import { consensusVerdict, sunYawVerdict } from './sunflip.js';
 import { getSequence } from './panoramax.js';
-import { POSE_STORE_KEY, composePoseGesture, normalizeYaw, posePatchRequest } from './pose.js';
+import { POSE_STORE_KEY, POSITION_STORE_KEY, composePoseGesture, normalizeYaw, offsetLngLat, posePatchRequest } from './pose.js';
 
 export { pictureToTarget };
 
@@ -151,6 +151,75 @@ export function setCurrentPose({ pitch, roll, yaw } = {}) {
   return getCurrentPose();
 }
 
+// --- Position correction (#107) ---------------------------------------------
+// GPS noise is a translation: per-PICTURE metre offsets {e, n, u} (east/north/
+// up), applied by re-anchoring the photosphere. e/n are PATCHable as absolute
+// lat/lon; u (altitude) has no API field and stays local.
+const clampM = (v, lim) => Math.max(-lim, Math.min(lim, v || 0));
+
+function resolvePositionOffset(pic) {
+  const stored = lsGet(POSITION_STORE_KEY(pic.id));
+  if (stored != null) {
+    try {
+      const p = JSON.parse(stored);
+      return { e: +p.e || 0, n: +p.n || 0, u: +p.u || 0 };
+    } catch { /* corrupted — fall through */ }
+  }
+  return { e: 0, n: 0, u: 0 };
+}
+
+export function getCurrentPositionOffset() {
+  if (!current) return null;
+  return { ...(current.posOffset || { e: 0, n: 0, u: 0 }) };
+}
+
+// Position-change event (#107): deliberately separate from onPictureChanged —
+// that one triggers network refreshes (minimap search), far too heavy for the
+// per-gesture cadence of position nudges. Listeners re-derive eye-relative
+// state (nav dots/arrows) from the corrected position.
+const positionListeners = [];
+export function onPositionChanged(cb) {
+  positionListeners.push(cb);
+}
+const emitPosition = () => {
+  for (const cb of positionListeners) cb();
+};
+
+function applyPositionOverride() {
+  if (!current || !photosphere) return;
+  const o = current.posOffset || { e: 0, n: 0, u: 0 };
+  photosphere.setAnchor(
+    offsetLngLat(current.lon, current.lat, o.e, o.n),
+    PHOTOSPHERE.eyeHeight + o.u
+  );
+}
+
+let posSaveTimer = 0;
+export function nudgeCurrentPosition({ eastM = 0, northM = 0, upM = 0 } = {}) {
+  if (!current || !photosphere) return null;
+  const o = current.posOffset || (current.posOffset = { e: 0, n: 0, u: 0 });
+  // Guard rails: GPS corrections are metres, not blocks; eye stays plausible.
+  o.e = clampM(o.e + eastM, 50);
+  o.n = clampM(o.n + northM, 50);
+  o.u = Math.max(-3, Math.min(6, (o.u || 0) + upM));
+  applyPositionOverride();
+  emitPosition();
+  const key = POSITION_STORE_KEY(current.id);
+  const json = JSON.stringify(o);
+  clearTimeout(posSaveTimer);
+  posSaveTimer = setTimeout(() => lsSet(key, json), 250);
+  return getCurrentPositionOffset();
+}
+
+export function resetCurrentPosition() {
+  if (!current) return null;
+  current.posOffset = { e: 0, n: 0, u: 0 };
+  applyPositionOverride();
+  emitPosition();
+  lsSet(POSITION_STORE_KEY(current.id), JSON.stringify(current.posOffset));
+  return getCurrentPositionOffset();
+}
+
 // --- Pose edit mode (#106) --------------------------------------------------
 // While on, dragging the canvas rotates the PHOTO (view-space composition on
 // the pose) instead of the camera; the ring control feeds aboutForward.
@@ -181,10 +250,20 @@ export function setPoseEditMode(on, onChange) {
   if (!photosphere || !current) on = false;
   poseEditOn = !!on;
   photosphere?.setPoseEditDrag(poseEditOn
-    ? (dxDeg, dyDeg) => {
-      // Grab-the-photo feel: content follows the cursor (signs derive from
-      // the composePoseGesture convention pinned by the unit tests).
-      applyPoseGesture({ aboutUp: -dxDeg, aboutRight: -dyDeg });
+    ? (dxDeg, dyDeg, info) => {
+      if (info?.shiftKey) {
+        // ⇧-drag grabs the GROUND (#107): the vector world follows the cursor,
+        // so the anchor moves opposite the dragged ground delta.
+        const gPrev = photosphere.groundPointAt(info.prevX, info.prevY);
+        const gNow = photosphere.groundPointAt(info.x, info.y);
+        if (gPrev && gNow) {
+          nudgeCurrentPosition({ eastM: -(gNow[0] - gPrev[0]), northM: -(gNow[1] - gPrev[1]) });
+        }
+      } else {
+        // Grab-the-photo feel: content follows the cursor (signs derive from
+        // the composePoseGesture convention pinned by the unit tests).
+        applyPoseGesture({ aboutUp: -dxDeg, aboutRight: -dyDeg });
+      }
       if (onChange) onChange();
     }
     : null);
@@ -197,12 +276,20 @@ export function setPoseEditMode(on, onChange) {
 export async function savePoseToPanoramax(token) {
   if (!current) return { ok: false, error: 'not in a panorama' };
   if (!current.homeApi) return { ok: false, error: 'unknown home instance for this picture' };
-  const req = posePatchRequest(current.homeApi, current.sequenceId, current.id, getCurrentPose(), token);
+  // A horizontal position correction rides in the same PATCH as absolute
+  // lat/lon (#107); altitude has no API field — reported so the UI can say so.
+  const o = current.posOffset;
+  let position;
+  if (o && (o.e || o.n)) {
+    const [lon, lat] = offsetLngLat(current.lon, current.lat, o.e, o.n);
+    position = { latitude: lat, longitude: lon };
+  }
+  const req = posePatchRequest(current.homeApi, current.sequenceId, current.id, getCurrentPose(), token, position);
   if (!req) return { ok: false, error: 'nothing to save' };
   try {
     const res = await fetch(req.url, req.init);
     if (!res.ok) return { ok: false, status: res.status, error: `Panoramax answered ${res.status}` };
-    return { ok: true, status: res.status };
+    return { ok: true, status: res.status, altitudeLocalOnly: !!(o && o.u) };
   } catch (err) {
     return { ok: false, error: err?.message || 'network error (CORS?)' };
   }
@@ -215,6 +302,7 @@ export async function enterStreetView(map, pic) {
   const pr = resolvePitchRoll(pic); // #98
   pic.posePitch = pr.pitch;
   pic.poseRoll = pr.roll;
+  pic.posOffset = resolvePositionOffset(pic); // #107
   current = pic;
   svMap = map;
 
@@ -236,6 +324,8 @@ export async function enterStreetView(map, pic) {
         // Start mixed, not photo-only (#101): applied here (after the suspend
         // above) so the default 50/50 actually reveals the OSM layers.
         setBlend(currentBlend);
+        // Re-anchor onto the corrected position, if this picture has one (#107).
+        applyPositionOverride();
         // Honor an exit requested during the enter animation (e.g. Esc mid-entry).
         if (pendingExit) {
           pendingExit = false;
@@ -252,7 +342,12 @@ export async function enterStreetView(map, pic) {
         current = null;
         emit(null);
       },
-      onMove: () => emit(current),
+      onMove: () => {
+        // A walk lands on the target's ORIGINAL anchor — re-apply the new
+        // picture's position correction before anyone reads the state (#107).
+        applyPositionOverride();
+        emit(current);
+      },
     });
   }
 

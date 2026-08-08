@@ -99,30 +99,12 @@ body {
   background: rgba(50, 50, 60, 0.95);
 }
 
-/* Manual 180° flip for mis-oriented sequences (#69) — below the exit button. */
-#flip-pano {
-  position: absolute;
-  top: 56px;
-  right: 50px;
-  z-index: 20;
-  background: rgba(20, 20, 24, 0.85);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-#flip-pano:hover {
-  background: rgba(50, 50, 60, 0.95);
-}
-
-/* Pose leveller (#98) — below the flip button; the panel it toggles holds the
-   pitch/roll/yaw sliders and the Panoramax write-back. */
+/* Panorama editor toggle (#98) — below the back button; the panel it opens
+   holds the rotation cluster and the Panoramax write-back. The 180° flip
+   lives INSIDE the panel now (it is a rotation). */
 #pose-toggle {
   position: absolute;
-  top: 96px;
+  top: 56px;
   right: 50px;
   z-index: 20;
   background: rgba(20, 20, 24, 0.85);
@@ -140,35 +122,32 @@ body {
 
 #pose-panel {
   position: absolute;
-  top: 136px;
+  top: 96px;
   right: 50px;
   z-index: 20;
   width: 250px;
-  /* NO layer promotion (no transform/will-change/animation) — on the affected
-     GPU/Chrome any promoted layer randomly skips painting (#98/#104 reports:
-     blank panel, blank background, hover shimmer). Plain DOM is the rendering
-     path of the standalone street buttons, which never glitched. Fully OPAQUE
-     background: alpha-blending a big overlay over the WebGL canvas is the
-     other classic driver edge-case, and 0.9 was near-opaque anyway. */
-  background: rgb(24, 25, 28);
+  /* The panel is an INVISIBLE container: no background, border or promotion.
+     On the affected GPU/Chrome, LARGE overlay surfaces over the WebGL canvas
+     rasterize unreliably in every configuration (blank at open, blank on
+     hover invalidation, blank on keepalive ticks — #98/#104/#106 reports),
+     while the small standalone street buttons never glitched once, hover
+     included. So there is no large surface: each child below is a small
+     self-backed chip, N copies of the proven-reliable recipe. */
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  padding: 10px 12px;
   font-size: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
-/* Isolate hover repaints: each panel CHILD rasters as its own tiny layer, so
-   a button's :hover change repaints only that button — never the shared panel
-   surface, whose re-raster is unreliable on the affected GPU/Chrome (the
-   background flashed white on every hover; per-child layers are the exact
-   configuration the user confirmed made the buttons rock-solid). The panel
-   itself stays UNPROMOTED + opaque — the at-rest-stable configuration. */
+/* Every panel child is its own small opaque chip (the ✕ Map size class).
+   Buttons/inputs with dedicated styles later in the file override the chip
+   background (equal specificity, later rule wins). No transforms — plain DOM. */
 #pose-panel > * {
-  transform: translateZ(0);
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 6px 10px;
 }
 
 .pose-row {
@@ -212,9 +191,10 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* Pose edit mode (#106): toggle + the roll ring. */
-#pose-edit {
-  background: rgba(255, 255, 255, 0.12);
+/* Pose edit mode (#106): toggle + flip chip + the roll ring. */
+#pose-edit,
+#flip-pano {
+  background: rgb(52, 54, 60); /* opaque — sits directly over the photo now */
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px;
@@ -223,13 +203,103 @@ body {
   cursor: pointer;
 }
 
-#pose-edit:hover {
-  background: rgba(255, 255, 255, 0.22);
+#pose-edit:hover,
+#flip-pano:hover {
+  background: rgb(66, 68, 76);
 }
 
 #pose-edit.active {
   background: #2962ff;
   border-color: #2962ff;
+}
+
+/* Compass nudge pad (#107): fixed-resolution position moves — 30 cm per
+   click, 1 m with ⇧ — for users who find the drags too sensitive. */
+#pose-pad {
+  display: grid;
+  grid-template-areas: '. n .' 'w . e' '. s .';
+  gap: 2px;
+}
+
+#pose-pad button {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  background: rgb(52, 54, 60);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#pose-pad button:hover {
+  background: rgb(66, 68, 76);
+}
+
+#pose-pad .pad-n { grid-area: n; }
+#pose-pad .pad-w { grid-area: w; }
+#pose-pad .pad-e { grid-area: e; }
+#pose-pad .pad-s { grid-area: s; }
+
+#pose-rot-val,
+#pose-pos-val {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Translation cluster (#107): compass pad + elevation scale + Δ read-outs in
+   one small chip right of the (rotation) ring. */
+#pose-elev {
+  position: absolute;
+  top: calc(50% - 130px);
+  left: calc(50% + 160px);
+  z-index: 19;
+  width: 84px;
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+#pose-elev-track {
+  position: relative;
+  width: 4px;
+  height: 130px;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 2px;
+}
+
+#pose-elev-handle {
+  position: absolute;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: #2962ff;
+  border: 2px solid #fff;
+  cursor: grab;
+}
+
+#pose-elev-handle:active {
+  cursor: grabbing;
+}
+
+#pose-elev-val {
+  margin-top: 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 #pose-ring {
@@ -284,7 +354,7 @@ body {
 }
 
 #pose-token {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(34, 36, 41); /* opaque — sits directly over the photo now */
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 6px;
@@ -313,6 +383,18 @@ body {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
+/* In edit mode the minimap is a position editor (#107): drag it to move the
+   panorama on the 2D ground plan. */
+#minimap.minimap-editable {
+  cursor: grab;
+  outline: 2px dashed rgba(41, 98, 255, 0.8);
+  outline-offset: 2px;
+}
+
+#minimap.minimap-editable:active {
+  cursor: grabbing;
+}
+
 #blend-control {
   position: absolute;
   bottom: 24px;
@@ -332,6 +414,25 @@ body {
 
 #blend-control input[type='range'] {
   width: 200px;
+}
+
+/* Street-only chrome NEVER paints outside street mode, whatever the JS state:
+   the plugin stamps body.street-mode on enter and removes it on exit, so this
+   gate closes every teardown race for good (#107 report: edit-mode panel and
+   elevation gauge survived into map mode). !important so it also beats the
+   flex/display values that would otherwise override the `hidden` attribute. */
+body:not(.street-mode) #pose-panel,
+body:not(.street-mode) #pose-ring,
+body:not(.street-mode) #pose-elev,
+body:not(.street-mode) #pose-toggle,
+body:not(.street-mode) #flip-pano,
+body:not(.street-mode) #exit-street,
+body:not(.street-mode) #blend-control,
+body:not(.street-mode) #minimap,
+#pose-panel[hidden],
+#pose-ring[hidden],
+#pose-elev[hidden] {
+  display: none !important;
 }
 
 /* The MapLibre canvas is transparent where nothing renders; at the very-low

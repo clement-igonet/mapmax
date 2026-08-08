@@ -5,7 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, ST
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isPoseEditMode, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
+import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, savePoseToPanoramax, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, PENDING_TOKEN_KEY, TOKEN_KEY } from './panoramaxauth.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
@@ -93,7 +93,6 @@ function revealStreetUI() {
   document.getElementById('exit-street').hidden = false;
   document.getElementById('blend-control').hidden = false;
   document.getElementById('minimap').hidden = false;
-  document.getElementById('flip-pano').hidden = false;
   document.getElementById('pose-toggle').hidden = false;
 }
 let currentPic = null;
@@ -218,7 +217,6 @@ const leaveStreetUI = () => {
   exitBtn.hidden = true;
   document.getElementById('blend-control').hidden = true;
   document.getElementById('minimap').hidden = true;
-  document.getElementById('flip-pano').hidden = true;
   document.getElementById('pose-toggle').hidden = true;
   document.getElementById('pose-panel').hidden = true;
   setEditModeUI(false); // never leave photo-drag mode armed outside the panel (#106)
@@ -248,19 +246,10 @@ const posePanel = document.getElementById('pose-panel');
 const poseStatus = document.getElementById('pose-status');
 const poseTokenInput = document.getElementById('pose-token');
 const POSE_STATUS_DEFAULT = poseStatus.textContent;
-const poseSliders = {
-  pitch: document.getElementById('pose-pitch'),
-  roll: document.getElementById('pose-roll'),
-  yaw: document.getElementById('pose-yaw'),
-};
-const poseVals = {
-  pitch: document.getElementById('pose-pitch-val'),
-  roll: document.getElementById('pose-roll-val'),
-  yaw: document.getElementById('pose-yaw-val'),
-};
-// The yaw slider edits the offset in ±180 around the GPS direction; storage
-// and the PATCH API use [0,360).
-const yawToSlider = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
+// The gestures ARE the controls (#106); this read-out just mirrors them.
+// Yaw is shown in ±180 around the GPS direction; storage/PATCH use [0,360).
+const poseRotVal = document.getElementById('pose-rot-val');
+const yawToSigned = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
 
 // The manual token link is a FALLBACK: pointless once a token is present
 // (connected or pasted), so it only shows while the field is empty (#104).
@@ -273,10 +262,8 @@ poseTokenInput.addEventListener('input', syncPoseHelp);
 function syncPosePanel() {
   const pose = getCurrentPose();
   if (!pose || posePanel.hidden) return;
-  poseSliders.pitch.value = String(pose.pitch);
-  poseSliders.roll.value = String(pose.roll);
-  poseSliders.yaw.value = String(yawToSlider(pose.yaw));
-  for (const k of ['pitch', 'roll', 'yaw']) poseVals[k].textContent = `${poseSliders[k].value}°`;
+  poseRotVal.textContent =
+    `Pitch ${pose.pitch.toFixed(1)}° · Roll ${pose.roll.toFixed(1)}° · Yaw ${yawToSigned(pose.yaw).toFixed(0)}°`;
   // Token help goes to the CURRENT picture's home instance (that's where the
   // PATCH lands): sign in there, then this endpoint lists your tokens.
   const home = currentPicture()?.homeApi;
@@ -389,19 +376,14 @@ poseConnectBtn.addEventListener('click', async () => {
   }
 });
 
-for (const k of ['pitch', 'roll', 'yaw']) {
-  poseSliders[k].addEventListener('input', () => {
-    const v = parseFloat(poseSliders[k].value);
-    poseVals[k].textContent = `${poseSliders[k].value}°`;
-    setCurrentPose({ [k]: k === 'yaw' ? (v + 360) % 360 : v });
-  });
-}
-
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
+  resetCurrentPosition(); // #107: back to the GPS position and default eye height
   syncPosePanel();
   syncRing();
-  poseStatus.textContent = 'Pose reset to the metadata orientation.';
+  syncPosVal();
+  syncElev();
+  poseStatus.textContent = 'Pose and position reset to the picture metadata.';
 });
 
 // Pose edit mode (#106): drag rotates the photo (yaw/pitch), the ring rolls it.
@@ -415,13 +397,97 @@ function syncRing() {
   poseRing.style.transform = `rotate(${getCurrentPose()?.roll || 0}deg)`;
 }
 
+// Translation read-out (#107): metre offsets east/north of the current pano
+// (ΔH has its own read-out under the elevation scale).
+const posVal = document.getElementById('pose-pos-val');
+function syncPosVal() {
+  const o = getCurrentPositionOffset();
+  if (o) posVal.textContent = `ΔE ${o.e.toFixed(1)} · ΔN ${o.n.toFixed(1)} m`;
+}
+
+// Elevation scale (#107): a vertical gauge right of the ring — the handle
+// position maps linearly onto the eye-height offset range.
+const ELEV_MIN = -3, ELEV_MAX = 6;
+const poseElev = document.getElementById('pose-elev');
+const poseElevTrack = document.getElementById('pose-elev-track');
+const poseElevHandle = document.getElementById('pose-elev-handle');
+const poseElevVal = document.getElementById('pose-elev-val');
+function syncElev() {
+  if (poseElev.hidden) return;
+  const u = getCurrentPositionOffset()?.u || 0;
+  const frac = (ELEV_MAX - u) / (ELEV_MAX - ELEV_MIN); // 0 at top (+6) … 1 at bottom (−3)
+  poseElevHandle.style.top = `${(frac * 100).toFixed(2)}%`;
+  poseElevVal.textContent = `${u >= 0 ? '+' : ''}${u.toFixed(2)} m`;
+}
+let elevDragging = false;
+const elevFromPointer = (e) => {
+  const r = poseElevTrack.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+  return ELEV_MAX - frac * (ELEV_MAX - ELEV_MIN);
+};
+poseElevHandle.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  try { poseElevHandle.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+  elevDragging = true;
+});
+poseElevHandle.addEventListener('pointermove', (e) => {
+  if (!elevDragging) return;
+  const target = elevFromPointer(e);
+  const now = getCurrentPositionOffset()?.u || 0;
+  nudgeCurrentPosition({ upM: target - now });
+  syncElev();
+  syncPosVal();
+});
+poseElevHandle.addEventListener('pointerup', () => { elevDragging = false; });
+poseElevHandle.addEventListener('pointercancel', () => { elevDragging = false; });
+
+// Compass nudge pad (#107): fixed-resolution moves — the drags felt too
+// sensitive for fine placement. 30 cm per click, 1 m with ⇧ held.
+document.getElementById('pose-pad').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const step = e.shiftKey ? 1 : 0.3;
+  nudgeCurrentPosition({ eastM: Number(btn.dataset.e) * step, northM: Number(btn.dataset.n) * step });
+  syncPosVal();
+});
+
+// Minimap drag (#107): in edit mode, dragging the minimap moves the panorama
+// on the 2D ground plan — grab-the-world: the dots follow the cursor. The
+// minimap draws at a fixed metric scale (0.6 m/px, minimap.js).
+const MINIMAP_M_PER_PX = 0.6;
+const minimapEl = document.getElementById('minimap');
+let minimapDrag = null;
+minimapEl.addEventListener('pointerdown', (e) => {
+  if (!isPoseEditMode()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try { minimapEl.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+  minimapDrag = { x: e.clientX, y: e.clientY };
+});
+minimapEl.addEventListener('pointermove', (e) => {
+  if (!minimapDrag) return;
+  const dx = e.clientX - minimapDrag.x;
+  const dy = e.clientY - minimapDrag.y;
+  minimapDrag = { x: e.clientX, y: e.clientY };
+  // Screen y grows southward on the north-up minimap.
+  nudgeCurrentPosition({ eastM: -dx * MINIMAP_M_PER_PX, northM: dy * MINIMAP_M_PER_PX });
+  syncPosVal();
+});
+minimapEl.addEventListener('pointerup', () => { minimapDrag = null; });
+minimapEl.addEventListener('pointercancel', () => { minimapDrag = null; });
+
 function setEditModeUI(on) {
-  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); });
+  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); syncPosVal(); syncElev(); });
   poseEditBtn.classList.toggle('active', actual);
   poseRing.hidden = !actual;
+  poseElev.hidden = !actual;
+  minimapEl.classList.toggle('minimap-editable', actual);
   if (actual) {
     syncRing();
-    poseStatus.textContent = 'Edit mode — drag the photo to turn/tilt it, use the ring to straighten the horizon. Esc leaves edit mode.';
+    syncElev();
+    syncPosVal();
+    poseStatus.textContent = 'Edit mode — rotate: drag the photo (ring = horizon, flip = 180°). Move: arrows/scale on the right, ⇧-drag the ground, or drag the minimap. Esc leaves edit mode.';
   }
   return actual;
 }
@@ -471,7 +537,7 @@ document.getElementById('pose-save').addEventListener('click', async () => {
   poseStatus.textContent = 'Saving pose to Panoramax…';
   const res = await savePoseToPanoramax(token);
   poseStatus.textContent = res.ok
-    ? 'Saved — the pose is now corrected on Panoramax for every viewer.'
+    ? `Saved — pose${getCurrentPositionOffset()?.e || getCurrentPositionOffset()?.n ? ' and position' : ''} corrected on Panoramax for every viewer.${res.altitudeLocalOnly ? ' (Altitude has no API field — it stays local.)' : ''}`
     : `Save failed: ${res.error || res.status}. The correction still applies in this browser.`;
 });
 exitBtn.addEventListener('click', () => {

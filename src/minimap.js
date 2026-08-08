@@ -3,8 +3,9 @@
 // Schematic (no extra WebGL context / tile requests) so it stays cheap while
 // the tile budget (#11) keeps the main map's tiles suspended.
 import { projectToMinimap } from './geo.js';
+import { offsetLngLat } from './pose.js';
 import { searchNearby } from './panoramax.js';
-import { onPictureChanged, isStreetMode, _photosphere } from './streetview.js';
+import { getCurrentPositionOffset, onPictureChanged, isStreetMode, _photosphere } from './streetview.js';
 
 const SIZE = 132;
 const METERS_PER_PX = 0.6; // ~40 m across the minimap
@@ -49,10 +50,17 @@ export function setupMinimap(map) {
     ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
 
+    // Centre on the CORRECTED position (#107): while a position edit drags
+    // the pano, the neighbour dots slide live around the fixed centre marker.
+    const o = getCurrentPositionOffset();
+    const center = o && (o.e || o.n)
+      ? offsetLngLat(state.center[0], state.center[1], o.e, o.n)
+      : state.center;
+
     // nearby pictures
     ctx.fillStyle = '#2962ff';
     for (const p of state.points) {
-      const { x, y } = projectToMinimap(state.center, p, METERS_PER_PX, SIZE);
+      const { x, y } = projectToMinimap(center, p, METERS_PER_PX, SIZE);
       if (x < 0 || x > SIZE || y < 0 || y > SIZE) continue;
       ctx.beginPath();
       ctx.arc(x, y, 2.5, 0, Math.PI * 2);

@@ -10,12 +10,14 @@ import {
   homeApiBase,
   mat3Multiply,
   normalizeYaw,
+  offsetLngLat,
   panoPoseMatrix,
   poseFromMatrix,
   posePatchRequest,
   poseTransform,
   readPoseFromExif,
   POSE_STORE_KEY,
+  POSITION_STORE_KEY,
 } from '../../src/pose.js';
 
 // --- PATCH body -------------------------------------------------------------
@@ -65,6 +67,27 @@ Deno.test('posePatchRequest: token required; empty pose → null (skip request)'
   assertThrows(() => posePatchRequest('https://x/api', 'c', 'i', { pitch: 1 }, ''));
   assertThrows(() => posePatchRequest('https://x/api', '', 'i', { pitch: 1 }, 't'));
   assertEquals(posePatchRequest('https://x/api', 'c', 'i', {}, 't'), null);
+});
+
+Deno.test('posePatchRequest: corrected position rides in the same PATCH (#107)', () => {
+  const req = posePatchRequest('https://x/api', 'c', 'i', { pitch: 1 }, 't', { latitude: 48.85, longitude: 2.35 });
+  assertEquals(JSON.parse(req.init.body), { pitch: 1, latitude: 48.85, longitude: 2.35 });
+  // position-only PATCH (no pose set) is valid too
+  const posOnly = posePatchRequest('https://x/api', 'c', 'i', {}, 't', { latitude: 1, longitude: 2 });
+  assertEquals(JSON.parse(posOnly.init.body), { latitude: 1, longitude: 2 });
+  // partial/invalid position is ignored, not half-sent
+  assertEquals(posePatchRequest('https://x/api', 'c', 'i', {}, 't', { latitude: 1 }), null);
+});
+
+Deno.test('offsetLngLat: metres east/north to lon/lat at latitude (#107)', () => {
+  const [lon, lat] = offsetLngLat(2.35, 48.85, 10, -5);
+  assertAlmostEquals(lat, 48.85 - 5 / 111320, 1e-12);
+  assertAlmostEquals(lon, 2.35 + 10 / (111320 * Math.cos((48.85 * Math.PI) / 180)), 1e-12);
+  assertEquals(offsetLngLat(2.35, 48.85, 0, 0), [2.35, 48.85]);
+});
+
+Deno.test('POSITION_STORE_KEY: per picture, distinct from the pose key (#107)', () => {
+  assertEquals(POSITION_STORE_KEY('pic-1'), 'mapmax:pos:pic-1');
 });
 
 // --- Home instance ----------------------------------------------------------
