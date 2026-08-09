@@ -20,7 +20,8 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Notes |
 |---|---|---|
-| [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | plan in [docs/UPSTREAMING.md](docs/UPSTREAMING.md); after #108/#109; watch [maplibre#1136](https://github.com/maplibre/maplibre-gl-js/issues/1136)/[#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) |
+| [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | **in flight**: plugin [PR #4](https://github.com/clement-igonet/maplibre-gl-photosphere/pull/4) (0.4.0 editor API on the 0.3.0 HD-tiles base, 30 tests green, untagged); next: vendor 0.4.0 into MapMax + Panoramax `tiles` config; plan in [docs/UPSTREAMING.md](docs/UPSTREAMING.md) |
+| [#111](https://github.com/clement-igonet/mapmax/issues/111) | OSM.org-style chrome: Edit button + Panoramax Sign in / Sign up | after the 0.4.0 sync; builds on #104 Connect + #106 edition mode |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
 | [#87](https://github.com/clement-igonet/mapmax/issues/87) | Position-only tile/LOD (app-level) | app-side mitigations shipped (#87 gate pin, #95 clip); full fix tracked upstream via #94 |
