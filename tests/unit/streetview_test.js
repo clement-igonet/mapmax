@@ -17,6 +17,7 @@ Deno.test('pictureToTarget: default prefers SD for snappy stepping', () => {
     panoYaw: 208, // no yawOffset → image centre assumed at the heading
     panoPitch: 0, // no resolved pose → level capture assumed (#98)
     panoRoll: 0,
+    tiles: null, // no tiled HD derivate known yet (plugin 0.3.0 sync)
   });
 });
 
@@ -44,6 +45,7 @@ Deno.test('pictureToTarget: falls back through sd → thumb, heading defaults to
     panoYaw: 0,
     panoPitch: 0,
     panoRoll: 0,
+    tiles: null,
   });
 });
 

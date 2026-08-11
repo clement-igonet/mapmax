@@ -1,13 +1,13 @@
 // Street-view mode built on the vendored maplibre-gl-photosphere plugin.
 // One Photosphere instance is reused for the whole session: enter() steps into
 // a clicked picture, goTo() walks to an adjacent one (SPECIFICATIONS.md §2.2–2.5).
-import { Photosphere } from './vendor/photosphere-plugin.js';
+import { Photosphere } from './vendor/photosphere/index.js';
 import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH, STREET_DEFAULT_BLEND } from './config.js';
 import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 import { consensusVerdict, sunYawVerdict } from './sunflip.js';
-import { getSequence } from './panoramax.js';
+import { fetchTilesConfig, getSequence } from './panoramax.js';
 import { POSE_STORE_KEY, POSITION_STORE_KEY, composePoseGesture, normalizeYaw, offsetLngLat, posePatchRequest } from './pose.js';
 
 export { pictureToTarget };
@@ -298,7 +298,14 @@ export async function savePoseToPanoramax(token) {
 // Enter street view at `pic` (first click) or walk to it (already inside).
 export async function enterStreetView(map, pic) {
   flushPoseSave(); // a still-pending pose write must land before we read the store (#98)
-  pic.yawOffset = await resolveYawOffset(pic);
+  // /search results lack the tiled-HD fields — recover them in parallel with
+  // the sun-compass resolution so HD refinement works on every entry path.
+  const [yawOffset, tiles] = await Promise.all([
+    resolveYawOffset(pic),
+    pic.tiles ? Promise.resolve(pic.tiles) : fetchTilesConfig(pic).catch(() => null),
+  ]);
+  pic.yawOffset = yawOffset;
+  pic.tiles = tiles;
   const pr = resolvePitchRoll(pic); // #98
   pic.posePitch = pr.pitch;
   pic.poseRoll = pr.roll;
