@@ -11,6 +11,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 | Issue | Title | PR(s) | State |
 |---|---|---|---|
 | [#106](https://github.com/clement-igonet/mapmax/issues/106) | Pose edit mode: rotate the photosphere graphically (drag yaw/pitch, ring roll) | [#108](https://github.com/clement-igonet/mapmax/pull/108) (draft) | gesture maths (view-space compose + Euler extraction) unit-tested; plugin drag routing; ring UI; Esc layering; containerized e2e ✓ |
+| [#111](https://github.com/clement-igonet/mapmax/issues/111) | OSM.org-style chrome: header Edit + Panoramax auth | [#113](https://github.com/clement-igonet/mapmax/pull/113) (draft, stacked on #109) | header bar (brand/Edit/Sign in/Sign up/account chip); panel = edit-mode tool drawer; containerized e2e ✓; on [sandbox](https://sandbox.mapmax.confinia.io) |
 | [#107](https://github.com/clement-igonet/mapmax/issues/107) | Position edit mode: ground ⇧-drag + draggable minimap (lat/lon) + elevation scale | [#109](https://github.com/clement-igonet/mapmax/pull/109) (draft, stacked on #108) | drag-first rework per user feedback: sliders → read-out, elevation gauge beside the roll ring, minimap drag with live corrected-position dots; lat/lon rides in the pose PATCH; altitude local-only (no API field) |
 | [#103](https://github.com/clement-igonet/mapmax/issues/103) | Adopt stock MapLibre ≥ v6.20 (with #8057) on all envs | — | promotion path decided; **blocked upstream** (latest v6.1.0, [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) open) |
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
@@ -21,7 +22,6 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 | Issue | Title | Notes |
 |---|---|---|
 | [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | **in flight**: plugin [PR #4](https://github.com/clement-igonet/maplibre-gl-photosphere/pull/4) (0.4.0 editor API on the 0.3.0 HD-tiles base, 30 tests green, untagged); next: vendor 0.4.0 into MapMax + Panoramax `tiles` config; plan in [docs/UPSTREAMING.md](docs/UPSTREAMING.md) |
-| [#111](https://github.com/clement-igonet/mapmax/issues/111) | OSM.org-style chrome: Edit button + Panoramax Sign in / Sign up | after the 0.4.0 sync; builds on #104 Connect + #106 edition mode |
 | [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | survey in [SOURCES.md](SOURCES.md); adapter interface first; editing stays Panoramax/GeoVisio-only |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
