@@ -6,14 +6,104 @@ body {
   font-family: system-ui, sans-serif;
 }
 
+/* OSM.org-style persistent header (#111). */
+#topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: rgb(24, 25, 28);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+#brand {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.03em;
+}
+
+#brand span { color: #ff6f00; }
+
+#edit-main {
+  background: #2962ff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#edit-main:hover:not(:disabled) { background: #3b74ff; }
+
+#edit-main:disabled {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.45);
+  cursor: default;
+}
+
+#edit-main.active {
+  background: #ff6f00;
+}
+
+#topbar-spacer { flex: 1; }
+
+#auth-anon { display: flex; align-items: center; gap: 10px; }
+
+#auth-signin {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#auth-signin:hover { background: rgba(255, 255, 255, 0.22); }
+
+#auth-signup {
+  color: #7ab8ff;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+#auth-signup:hover { text-decoration: underline; }
+
+#auth-account { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+
+#auth-account[hidden] { display: none; }
+
+#auth-name { color: #ffd9b3; }
+
+#auth-signout {
+  background: none;
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#auth-signout:hover { color: #fff; }
+
 #map {
   position: absolute;
-  inset: 0;
+  inset: 44px 0 0 0;
 }
 
 #hud {
   position: absolute;
-  top: 10px;
+  top: 54px;
   left: 10px;
   z-index: 10;
   background: rgba(20, 20, 24, 0.82);
@@ -83,7 +173,7 @@ body {
 
 #exit-street {
   position: absolute;
-  top: 10px;
+  top: 54px;
   right: 50px;
   z-index: 20;
   background: rgba(20, 20, 24, 0.85);
@@ -99,30 +189,9 @@ body {
   background: rgba(50, 50, 60, 0.95);
 }
 
-/* Panorama editor toggle (#98) — below the back button; the panel it opens
-   holds the rotation cluster and the Panoramax write-back. The 180° flip
-   lives INSIDE the panel now (it is a rotation). */
-#pose-toggle {
-  position: absolute;
-  top: 56px;
-  right: 50px;
-  z-index: 20;
-  background: rgba(20, 20, 24, 0.85);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-#pose-toggle:hover {
-  background: rgba(50, 50, 60, 0.95);
-}
-
 #pose-panel {
   position: absolute;
-  top: 96px;
+  top: 100px;
   right: 50px;
   z-index: 20;
   width: 250px;
@@ -191,8 +260,7 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* Pose edit mode (#106): toggle + flip chip + the roll ring. */
-#pose-edit,
+/* Rotation chips (#106/#111). */
 #flip-pano {
   background: rgb(52, 54, 60); /* opaque — sits directly over the photo now */
   color: #fff;
@@ -203,14 +271,8 @@ body {
   cursor: pointer;
 }
 
-#pose-edit:hover,
 #flip-pano:hover {
   background: rgb(66, 68, 76);
-}
-
-#pose-edit.active {
-  background: #2962ff;
-  border-color: #2962ff;
 }
 
 /* Compass nudge pad (#107): fixed-resolution position moves — 30 cm per
@@ -424,7 +486,6 @@ body {
 body:not(.street-mode) #pose-panel,
 body:not(.street-mode) #pose-ring,
 body:not(.street-mode) #pose-elev,
-body:not(.street-mode) #pose-toggle,
 body:not(.street-mode) #flip-pano,
 body:not(.street-mode) #exit-street,
 body:not(.street-mode) #blend-control,

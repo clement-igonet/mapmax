@@ -77,6 +77,21 @@ assert.ok(wiring.hasPanoramax, 'panoramax source missing');
 assert.ok(wiring.hasExtrusion, '3D buildings layer missing');
 console.log(`[e2e] map version: ${wiring.version || 'n/a'}`);
 
+// #111 OSM.org-style chrome: header present; Edit disarmed in map mode;
+// anonymous auth entries shown until a Panoramax sign-in.
+const chrome = await page.evaluate(() => ({
+  topbar: !!document.getElementById('topbar'),
+  brand: document.getElementById('brand')?.textContent || '',
+  editDisabled: document.getElementById('edit-main')?.disabled === true,
+  signinShown: !document.getElementById('auth-anon').hidden,
+  accountHidden: document.getElementById('auth-account').hidden,
+}));
+assert.ok(chrome.topbar, 'header bar missing (#111)');
+assert.match(chrome.brand, /MapMax/, 'brand missing from the header (#111)');
+assert.ok(chrome.editDisabled, 'Edit must be disabled in map mode (#111)');
+assert.ok(chrome.signinShown && chrome.accountHidden, 'anonymous auth entries not shown (#111)');
+console.log('[e2e] OSM-style header: brand + disarmed Edit + Sign in/Sign up (#111) OK');
+
 // Map-mode clutter cap (#41): the tilt is limited so the map never renders 3D
 // buildings + Panoramax dots out to the horizon, and the limit rises as you zoom
 // in. Verify the cap is below the hard max, grows on zoom-in, and that at the cap
@@ -432,16 +447,18 @@ if (nav.skipped) {
   // unit tests on the request builder).
   const pose = await page.evaluate(async () => {
     const sv = await import('./src/streetview.js');
-    const toggle = document.getElementById('pose-toggle');
-    toggle.click();
+    // #111: the header's Edit button is THE entry — it opens the tool drawer
+    // together with edition mode.
+    const editMain = document.getElementById('edit-main');
+    const editEnabled = !editMain.disabled;
+    editMain.click();
     const panelOpen = !document.getElementById('pose-panel').hidden;
     const before = sv._photosphere().getPanoPose();
     sv.setCurrentPose({ pitch: -6, roll: 3 });
     const after = sv._photosphere().getPanoPose();
-    // The panel read-out mirrors the pose (sliders replaced by gestures, #106):
-    // re-opening the panel runs the sync path.
-    toggle.click();
-    toggle.click();
+    // The drawer read-out mirrors the pose: re-entering runs the sync path.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    editMain.click();
     const readout = document.getElementById('pose-rot-val').textContent;
     // Persistence is debounced (~250 ms) so drags don't hammer localStorage —
     // wait for the flush before reading it back.
@@ -451,10 +468,14 @@ if (nav.skipped) {
     // Reset so the leveller leaves no residue for later runs/assertions.
     document.getElementById('pose-reset').click();
     const reset = sv._photosphere().getPanoPose();
-    return { visible: !toggle.hidden, panelOpen, before, after, readout, stored, reset };
+    // Leave edit mode off for the next block (it re-enters via the header).
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const stillInside = sv.isStreetMode();
+    return { editEnabled, panelOpen, before, after, readout, stored, reset, stillInside };
   });
-  assert.ok(pose.visible, 'pose leveller button not visible in street mode (#98)');
-  assert.ok(pose.panelOpen, 'pose panel did not open (#98)');
+  assert.ok(pose.editEnabled, 'header Edit button not armed in street mode (#111)');
+  assert.ok(pose.panelOpen, 'Edit did not open the tool drawer (#111)');
+  assert.ok(pose.stillInside, 'leaving edit mode must not exit the panorama (#111)');
   // #104: the Connect button is present in the open panel (the OAuth claim
   // dance itself can't run in CI — its request builders are unit-tested).
   const connectPresent = await page.evaluate(() => {
@@ -476,7 +497,7 @@ if (nav.skipped) {
     const sv = await import('./src/streetview.js');
     const { map } = await import('./src/main.js');
     const ps = sv._photosphere();
-    document.getElementById('pose-edit').click();
+    document.getElementById('edit-main').click();
     const on = sv.isPoseEditMode();
     const ringShown = !document.getElementById('pose-ring').hidden;
     const camYaw0 = ps.yaw;
@@ -528,7 +549,7 @@ if (nav.skipped) {
     const sv = await import('./src/streetview.js');
     const { map } = await import('./src/main.js');
     const ps = sv._photosphere();
-    document.getElementById('pose-edit').click(); // re-enter edit mode (Esc closed it)
+    document.getElementById('edit-main').click(); // re-enter edit mode (Esc closed it)
     const rowShown = !!document.querySelector('#pose-elev #pose-pad'); // pad lives in the translation cluster
     const anchor0 = [...ps.lngLat];
     const eye0 = ps._options.eyeHeight;

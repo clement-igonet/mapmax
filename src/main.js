@@ -93,7 +93,10 @@ function revealStreetUI() {
   document.getElementById('exit-street').hidden = false;
   document.getElementById('blend-control').hidden = false;
   document.getElementById('minimap').hidden = false;
-  document.getElementById('pose-toggle').hidden = false;
+  // The header's Edit entry (#111) arms only inside a panorama.
+  const editMain = document.getElementById('edit-main');
+  editMain.disabled = false;
+  editMain.title = 'Correct this panorama — orientation, horizon, position — and save it to Panoramax';
 }
 let currentPic = null;
 onPictureChanged((pic) => {
@@ -217,9 +220,10 @@ const leaveStreetUI = () => {
   exitBtn.hidden = true;
   document.getElementById('blend-control').hidden = true;
   document.getElementById('minimap').hidden = true;
-  document.getElementById('pose-toggle').hidden = true;
-  document.getElementById('pose-panel').hidden = true;
-  setEditModeUI(false); // never leave photo-drag mode armed outside the panel (#106)
+  const editMain = document.getElementById('edit-main');
+  editMain.disabled = true;
+  editMain.title = 'Enter a 360° panorama first — Edit corrects its orientation and position, and saves to Panoramax';
+  setEditModeUI(false); // closes the drawer + edit mode together (#111)
   // Back to the 50/50 default for the next entry (#101) — streetview.js resets
   // its remembered blend on exit to match.
   blendSlider.value = String(STREET_DEFAULT_BLEND * 100);
@@ -297,19 +301,40 @@ async function adoptPendingToken() {
   sessionStorage.setItem(TOKEN_KEY(home), pending); // session only
   poseTokenInput.value = pending;
   syncPoseHelp();
+  setSignedIn(me.name);
   poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
   return true;
 }
 
-document.getElementById('pose-toggle').addEventListener('click', () => {
-  posePanel.hidden = !posePanel.hidden;
-  if (!posePanel.hidden) {
-    poseTokenInput.value = storedToken();
-    poseStatus.textContent = POSE_STATUS_DEFAULT;
-    syncPosePanel();
-    if (!poseTokenInput.value) adoptPendingToken(); // fire-and-forget check
-  } else {
-    setEditModeUI(false); // closing the panel closes edit mode with it (#106)
+// Header auth chip (#111): OSM.org-style Sign in / Sign up ↔ account name.
+const authAnon = document.getElementById('auth-anon');
+const authAccount = document.getElementById('auth-account');
+function setSignedIn(name) {
+  authAnon.hidden = true;
+  authAccount.hidden = false;
+  document.getElementById('auth-name').textContent = name || 'Signed in';
+}
+function setSignedOut() {
+  authAnon.hidden = false;
+  authAccount.hidden = true;
+}
+document.getElementById('auth-signout').addEventListener('click', () => {
+  const home = currentPicture()?.homeApi;
+  if (home) {
+    sessionStorage.removeItem(TOKEN_KEY(home));
+    sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
+  }
+  sessionStorage.removeItem('mapmax:panoramax-token');
+  poseTokenInput.value = '';
+  syncPoseHelp();
+  setSignedOut();
+  poseStatus.textContent = 'Signed out — corrections stay local until you connect again.';
+});
+// Sign up: the account lives on the picture's home instance (OSM OAuth there);
+// the link retargets per picture, defaulting to the main instance.
+onPictureChanged((pic) => {
+  if (pic?.homeApi) {
+    document.getElementById('auth-signup').href = pic.homeApi.replace(/\/api$/, '');
   }
 });
 
@@ -363,7 +388,9 @@ poseConnectBtn.addEventListener('click', async () => {
         sessionStorage.setItem(TOKEN_KEY(home), parsed.jwt); // session only
         poseTokenInput.value = parsed.jwt;
         syncPoseHelp(); // token present — the manual fallback link disappears
+        setSignedIn(me.name); // header chip (#111)
         poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
+        status(`Connected to Panoramax${me.name ? ` as ${me.name}` : ''}.`);
         return;
       }
     }
@@ -386,8 +413,9 @@ document.getElementById('pose-reset').addEventListener('click', () => {
   poseStatus.textContent = 'Pose and position reset to the picture metadata.';
 });
 
-// Pose edit mode (#106): drag rotates the photo (yaw/pitch), the ring rolls it.
-const poseEditBtn = document.getElementById('pose-edit');
+// Pose edit mode (#106/#111): entered via the header's Edit button; the panel
+// is its tool drawer. Drag rotates the photo (yaw/pitch), the ring rolls it.
+const editMainBtn = document.getElementById('edit-main');
 const poseRing = document.getElementById('pose-ring');
 const poseRingHandle = document.getElementById('pose-ring-handle');
 
@@ -479,11 +507,16 @@ minimapEl.addEventListener('pointercancel', () => { minimapDrag = null; });
 
 function setEditModeUI(on) {
   const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); syncPosVal(); syncElev(); });
-  poseEditBtn.classList.toggle('active', actual);
+  editMainBtn.classList.toggle('active', actual);
+  // The panel is the edit-mode tool drawer (#111): one state, one toggle.
+  posePanel.hidden = !actual;
   poseRing.hidden = !actual;
   poseElev.hidden = !actual;
   minimapEl.classList.toggle('minimap-editable', actual);
   if (actual) {
+    poseTokenInput.value = storedToken();
+    if (!poseTokenInput.value) adoptPendingToken(); // fire-and-forget check
+    syncPosePanel();
     syncRing();
     syncElev();
     syncPosVal();
@@ -492,9 +525,19 @@ function setEditModeUI(on) {
   return actual;
 }
 
-poseEditBtn.addEventListener('click', () => {
-  const on = setEditModeUI(!isPoseEditMode());
-  if (!on) poseStatus.textContent = POSE_STATUS_DEFAULT;
+editMainBtn.addEventListener('click', () => {
+  setEditModeUI(!isPoseEditMode());
+});
+
+// Header Sign in (#111): runs the #104 Connect flow (needs a current picture —
+// the token belongs to its home instance).
+document.getElementById('auth-signin').addEventListener('click', () => {
+  if (!isStreetMode()) {
+    status('Click into a 360° panorama first — sign-in targets the instance hosting the picture.');
+    return;
+  }
+  poseConnectBtn.click();
+  status('Sign-in tab opened — complete the OpenStreetMap login there.');
 });
 
 // Ring drag: the angle around the screen centre maps to roll about the

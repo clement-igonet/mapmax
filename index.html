@@ -12,19 +12,32 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
+    <!-- OSM.org-style chrome (#111): persistent header with the brand, the
+         Edit entry point (disabled outside a panorama) and Panoramax auth. -->
+    <header id="topbar">
+      <div id="brand">Map<span>Max</span></div>
+      <button type="button" id="edit-main" disabled
+              title="Enter a 360° panorama first — Edit corrects its orientation and position, and saves to Panoramax">✏️ Edit</button>
+      <div id="topbar-spacer"></div>
+      <div id="auth-anon">
+        <button type="button" id="auth-signin" title="Sign in to this picture's Panoramax instance (OpenStreetMap account)">Sign in</button>
+        <a id="auth-signup" href="https://panoramax.openstreetmap.fr" target="_blank" rel="noopener" title="Create an account on the Panoramax instance">Sign up</a>
+      </div>
+      <div id="auth-account" hidden>
+        <span id="auth-name"></span>
+        <button type="button" id="auth-signout" title="Forget this session's Panoramax token">Sign out</button>
+      </div>
+    </header>
     <div id="map"></div>
     <div id="hud">
-      <div id="hud-title">MapMax</div>
       <div id="hud-status">Loading map…</div>
       <div id="pic-info" hidden></div>
     </div>
     <button type="button" id="exit-street" title="Leave the panorama and return to the map (Esc)" hidden>← Back to map</button>
-    <button type="button" id="pose-toggle" title="Correct this panorama — orientation, horizon, position — and save it to Panoramax (#98)" hidden>✎ Edit panorama</button>
+    <!-- The edit-mode tool drawer (#111): opens/closes WITH edition mode via
+         the header's Edit button. ROTATION cluster (#106): the 180° flip and
+         the angle read-out; translation lives beside the ring (#pose-elev). -->
     <div id="pose-panel" hidden>
-      <!-- ROTATION cluster (#106): edit-mode gestures, the 180° flip and the
-           angle read-out — everything that turns the photo. Translation lives
-           in the on-screen cluster beside the ring (#pose-elev). -->
-      <button type="button" id="pose-edit" title="Edit mode: drag the photo = yaw/pitch · ring = roll · right-hand cluster = move/raise the panorama (#106/#107)">🖐 Edit mode</button>
       <button type="button" id="flip-pano" title="Photo direction looks reversed? Flip this sequence 180° (#69)">↺ Flip 180°</button>
       <div class="pose-row" id="pose-readout">
         <span id="pose-rot-val">Pitch 0° · Roll 0° · Yaw 0°</span>
