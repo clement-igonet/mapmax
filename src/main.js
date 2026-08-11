@@ -5,8 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, ST
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, isStreetMode, onPictureChanged, savePoseToPanoramax, setBlend, setCurrentPose } from './streetview.js';
-import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, PENDING_TOKEN_KEY, TOKEN_KEY } from './panoramaxauth.js';
+import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -93,8 +92,10 @@ function revealStreetUI() {
   document.getElementById('exit-street').hidden = false;
   document.getElementById('blend-control').hidden = false;
   document.getElementById('minimap').hidden = false;
-  document.getElementById('flip-pano').hidden = false;
-  document.getElementById('pose-toggle').hidden = false;
+  // The header's Edit entry (#111) arms only inside a panorama.
+  const editMain = document.getElementById('edit-main');
+  editMain.disabled = false;
+  editMain.title = 'Fix this panorama\'s orientation and position — in your browser only';
 }
 let currentPic = null;
 onPictureChanged((pic) => {
@@ -218,9 +219,10 @@ const leaveStreetUI = () => {
   exitBtn.hidden = true;
   document.getElementById('blend-control').hidden = true;
   document.getElementById('minimap').hidden = true;
-  document.getElementById('flip-pano').hidden = true;
-  document.getElementById('pose-toggle').hidden = true;
-  document.getElementById('pose-panel').hidden = true;
+  const editMain = document.getElementById('edit-main');
+  editMain.disabled = true;
+  editMain.title = 'Enter a 360° panorama first — Adjust fixes its orientation and position in your browser only';
+  setEditModeUI(false); // closes the drawer + edit mode together (#111)
   // Back to the 50/50 default for the next entry (#101) — streetview.js resets
   // its remembered blend on exit to match.
   blendSlider.value = String(STREET_DEFAULT_BLEND * 100);
@@ -240,188 +242,189 @@ document.getElementById('flip-pano').addEventListener('click', () => {
   syncPosePanel();
 });
 
-// Pose leveller (#98): pitch/roll/yaw sliders apply live (and persist per
-// sequence in this browser); with a Panoramax token the pose is PATCHed back
-// to the picture's home instance so the fix holds for every viewer.
+// Local corrections drawer (#98/#106/#111): MapMax is READ-oriented — the
+// gestures fix a panorama's rendering in this browser only; nothing is ever
+// written to any server (the write-back stack lives in maplibre-gl-panoramax
+// for apps that want it).
 const posePanel = document.getElementById('pose-panel');
 const poseStatus = document.getElementById('pose-status');
-const poseTokenInput = document.getElementById('pose-token');
 const POSE_STATUS_DEFAULT = poseStatus.textContent;
-const poseSliders = {
-  pitch: document.getElementById('pose-pitch'),
-  roll: document.getElementById('pose-roll'),
-  yaw: document.getElementById('pose-yaw'),
-};
-const poseVals = {
-  pitch: document.getElementById('pose-pitch-val'),
-  roll: document.getElementById('pose-roll-val'),
-  yaw: document.getElementById('pose-yaw-val'),
-};
-// The yaw slider edits the offset in ±180 around the GPS direction; storage
-// and the PATCH API use [0,360).
-const yawToSlider = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
-
-// The manual token link is a FALLBACK: pointless once a token is present
-// (connected or pasted), so it only shows while the field is empty (#104).
-const poseHelp = document.getElementById('pose-token-help');
-const syncPoseHelp = () => {
-  poseHelp.hidden = !!poseTokenInput.value.trim();
-};
-poseTokenInput.addEventListener('input', syncPoseHelp);
+// The gestures ARE the controls (#106); this read-out just mirrors them.
+// Yaw is shown in ±180 around the GPS direction; storage uses [0,360).
+const poseRotVal = document.getElementById('pose-rot-val');
+const yawToSigned = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
 
 function syncPosePanel() {
   const pose = getCurrentPose();
   if (!pose || posePanel.hidden) return;
-  poseSliders.pitch.value = String(pose.pitch);
-  poseSliders.roll.value = String(pose.roll);
-  poseSliders.yaw.value = String(yawToSlider(pose.yaw));
-  for (const k of ['pitch', 'roll', 'yaw']) poseVals[k].textContent = `${poseSliders[k].value}°`;
-  // Token help goes to the CURRENT picture's home instance (that's where the
-  // PATCH lands): sign in there, then this endpoint lists your tokens.
-  const home = currentPicture()?.homeApi;
-  if (home) poseHelp.href = `${home}/users/me/tokens`;
-  syncPoseHelp();
+  poseRotVal.textContent =
+    `Pitch ${pose.pitch.toFixed(1)}° · Roll ${pose.roll.toFixed(1)}° · Yaw ${yawToSigned(pose.yaw).toFixed(0)}°`;
 }
 onPictureChanged(() => syncPosePanel());
 
-// Token lookup for the CURRENT picture's home instance — tokens are only valid
-// on the instance that issued them, so they're stored per instance (#104). The
-// un-keyed legacy entry is kept as a read fallback.
-const storedToken = () => {
-  const home = currentPicture()?.homeApi;
-  return (home && sessionStorage.getItem(TOKEN_KEY(home))) || sessionStorage.getItem('mapmax:panoramax-token') || '';
-};
-
-// The OAuth claim can complete AFTER the Connect poll gave up (slow sign-in,
-// tab left open, page reloaded meanwhile): the generated JWT is remembered per
-// instance (PENDING_TOKEN_KEY) and re-checked here on panel open and on Save,
-// so a finished sign-in is adopted no matter when it finished (#104).
-async function adoptPendingToken() {
-  const home = currentPicture()?.homeApi;
-  if (!home) return false;
-  const pending = sessionStorage.getItem(PENDING_TOKEN_KEY(home));
-  if (!pending) return false;
-  const who = whoAmIRequest(home, pending);
-  const res = await fetch(who.url, who.init).catch(() => null);
-  if (!res?.ok) return false; // not claimed yet — keep it pending
-  const me = await res.json().catch(() => ({}));
-  sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
-  sessionStorage.setItem(TOKEN_KEY(home), pending); // session only
-  poseTokenInput.value = pending;
-  syncPoseHelp();
-  poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
-  return true;
-}
-
-document.getElementById('pose-toggle').addEventListener('click', () => {
-  posePanel.hidden = !posePanel.hidden;
-  if (!posePanel.hidden) {
-    poseTokenInput.value = storedToken();
-    poseStatus.textContent = POSE_STATUS_DEFAULT;
-    syncPosePanel();
-    if (!poseTokenInput.value) adoptPendingToken(); // fire-and-forget check
-  }
-});
-
-// "Connect to Panoramax" (#104): generate an unclaimed token on the picture's
-// home instance, open its claim URL (the instance's OAuth / OSM login) in a new
-// tab, and poll users/me with the JWT until the account binds it.
-const poseConnectBtn = document.getElementById('pose-connect');
-poseConnectBtn.addEventListener('click', async () => {
-  const pic = currentPicture();
-  if (!pic) {
-    poseStatus.textContent = 'Enter a 360° panorama first — the connection targets the instance that hosts the current picture.';
-    return;
-  }
-  // Open the tab synchronously (inside the click) so popup blockers allow it.
-  const claimTab = window.open('', '_blank');
-  poseConnectBtn.disabled = true;
-  let home = pic.homeApi;
-  if (!home) {
-    // Some fetch paths can miss the `via` link — refetch the item for it.
-    try { home = (await getPicture(pic.id))?.homeApi; } catch { /* handled below */ }
-  }
-  if (!home) {
-    if (claimTab) claimTab.close();
-    poseConnectBtn.disabled = false;
-    poseStatus.textContent = 'Unknown home instance for this picture — paste a token instead.';
-    return;
-  }
-  try {
-    const gen = tokenGenerateRequest(home);
-    const res = await fetch(gen.url, gen.init);
-    const parsed = parseGeneratedToken(await res.json());
-    if (!parsed) throw new Error(`no claimable token from ${home}`);
-    // Survive the poll's lifetime: adopted later from panel-open/Save (#104).
-    sessionStorage.setItem(PENDING_TOKEN_KEY(home), parsed.jwt);
-    if (claimTab) claimTab.location = parsed.claimUrl;
-    else {
-      // Popup blocked: hand the claim URL to the help link instead.
-      poseHelp.href = parsed.claimUrl;
-      poseHelp.textContent = 'Pop-up blocked — open the sign-in page manually ↗';
-      poseHelp.hidden = false;
-    }
-    poseStatus.textContent = 'Sign in with your OpenStreetMap account in the opened tab — waiting for the connection…';
-    for (const delay of claimPollDelays()) {
-      await new Promise((r) => setTimeout(r, delay));
-      if (posePanel.hidden) return; // panel closed — stop polling quietly
-      const who = whoAmIRequest(home, parsed.jwt);
-      const meRes = await fetch(who.url, who.init).catch(() => null);
-      if (meRes?.ok) {
-        const me = await meRes.json().catch(() => ({}));
-        sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
-        sessionStorage.setItem(TOKEN_KEY(home), parsed.jwt); // session only
-        poseTokenInput.value = parsed.jwt;
-        syncPoseHelp(); // token present — the manual fallback link disappears
-        poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
-        return;
-      }
-    }
-    poseStatus.textContent = 'Still waiting for the sign-in — finish it in the opened tab, then press Save: the connection is picked up automatically.';
-  } catch (err) {
-    if (claimTab) claimTab.close();
-    poseStatus.textContent = `Connect failed: ${err?.message || 'network error'}. You can paste a token instead.`;
-  } finally {
-    poseConnectBtn.disabled = false;
-  }
-});
-
-for (const k of ['pitch', 'roll', 'yaw']) {
-  poseSliders[k].addEventListener('input', () => {
-    const v = parseFloat(poseSliders[k].value);
-    poseVals[k].textContent = `${poseSliders[k].value}°`;
-    setCurrentPose({ [k]: k === 'yaw' ? (v + 360) % 360 : v });
-  });
-}
-
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
+  resetCurrentPosition(); // #107: back to the GPS position and default eye height
   syncPosePanel();
-  poseStatus.textContent = 'Pose reset to the metadata orientation.';
+  syncRing();
+  syncPosVal();
+  syncElev();
+  poseStatus.textContent = 'Pose and position reset to the picture metadata.';
 });
 
-document.getElementById('pose-save').addEventListener('click', async () => {
-  let token = poseTokenInput.value.trim();
-  // A sign-in finished after the poll gave up? Adopt it now and save through.
-  if (!token && await adoptPendingToken()) token = poseTokenInput.value.trim();
-  if (!token) {
-    poseStatus.textContent = 'No token — the correction stays in this browser only. Use Connect, or paste a Panoramax API token, to fix it at the source.';
-    return;
-  }
-  const home = currentPicture()?.homeApi;
-  sessionStorage.setItem(home ? TOKEN_KEY(home) : 'mapmax:panoramax-token', token); // session only — never persisted
-  poseStatus.textContent = 'Saving pose to Panoramax…';
-  const res = await savePoseToPanoramax(token);
-  poseStatus.textContent = res.ok
-    ? 'Saved — the pose is now corrected on Panoramax for every viewer.'
-    : `Save failed: ${res.error || res.status}. The correction still applies in this browser.`;
+// Pose edit mode (#106/#111): entered via the header's Edit button; the panel
+// is its tool drawer. Drag rotates the photo (yaw/pitch), the ring rolls it.
+const editMainBtn = document.getElementById('edit-main');
+const poseRing = document.getElementById('pose-ring');
+const poseRingHandle = document.getElementById('pose-ring-handle');
+
+// The handle orbits by rotating the (visually symmetric) ring container.
+function syncRing() {
+  if (poseRing.hidden) return;
+  poseRing.style.transform = `rotate(${getCurrentPose()?.roll || 0}deg)`;
+}
+
+// Translation read-out (#107): metre offsets east/north of the current pano
+// (ΔH has its own read-out under the elevation scale).
+const posVal = document.getElementById('pose-pos-val');
+function syncPosVal() {
+  const o = getCurrentPositionOffset();
+  if (o) posVal.textContent = `ΔE ${o.e.toFixed(1)} · ΔN ${o.n.toFixed(1)} m`;
+}
+
+// Elevation scale (#107): a vertical gauge right of the ring — the handle
+// position maps linearly onto the eye-height offset range.
+const ELEV_MIN = -3, ELEV_MAX = 6;
+const poseElev = document.getElementById('pose-elev');
+const poseElevTrack = document.getElementById('pose-elev-track');
+const poseElevHandle = document.getElementById('pose-elev-handle');
+const poseElevVal = document.getElementById('pose-elev-val');
+function syncElev() {
+  if (poseElev.hidden) return;
+  const u = getCurrentPositionOffset()?.u || 0;
+  const frac = (ELEV_MAX - u) / (ELEV_MAX - ELEV_MIN); // 0 at top (+6) … 1 at bottom (−3)
+  poseElevHandle.style.top = `${(frac * 100).toFixed(2)}%`;
+  poseElevVal.textContent = `${u >= 0 ? '+' : ''}${u.toFixed(2)} m`;
+}
+let elevDragging = false;
+const elevFromPointer = (e) => {
+  const r = poseElevTrack.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+  return ELEV_MAX - frac * (ELEV_MAX - ELEV_MIN);
+};
+poseElevHandle.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  try { poseElevHandle.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+  elevDragging = true;
 });
+poseElevHandle.addEventListener('pointermove', (e) => {
+  if (!elevDragging) return;
+  const target = elevFromPointer(e);
+  const now = getCurrentPositionOffset()?.u || 0;
+  nudgeCurrentPosition({ upM: target - now });
+  syncElev();
+  syncPosVal();
+});
+poseElevHandle.addEventListener('pointerup', () => { elevDragging = false; });
+poseElevHandle.addEventListener('pointercancel', () => { elevDragging = false; });
+
+// Compass nudge pad (#107): fixed-resolution moves — the drags felt too
+// sensitive for fine placement. 30 cm per click, 1 m with ⇧ held.
+document.getElementById('pose-pad').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const step = e.shiftKey ? 1 : 0.3;
+  nudgeCurrentPosition({ eastM: Number(btn.dataset.e) * step, northM: Number(btn.dataset.n) * step });
+  syncPosVal();
+});
+
+// Minimap drag (#107): in edit mode, dragging the minimap moves the panorama
+// on the 2D ground plan — grab-the-world: the dots follow the cursor. The
+// minimap draws at a fixed metric scale (0.6 m/px, minimap.js).
+const MINIMAP_M_PER_PX = 0.6;
+const minimapEl = document.getElementById('minimap');
+let minimapDrag = null;
+minimapEl.addEventListener('pointerdown', (e) => {
+  if (!isPoseEditMode()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try { minimapEl.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+  minimapDrag = { x: e.clientX, y: e.clientY };
+});
+minimapEl.addEventListener('pointermove', (e) => {
+  if (!minimapDrag) return;
+  const dx = e.clientX - minimapDrag.x;
+  const dy = e.clientY - minimapDrag.y;
+  minimapDrag = { x: e.clientX, y: e.clientY };
+  // Screen y grows southward on the north-up minimap.
+  nudgeCurrentPosition({ eastM: -dx * MINIMAP_M_PER_PX, northM: dy * MINIMAP_M_PER_PX });
+  syncPosVal();
+});
+minimapEl.addEventListener('pointerup', () => { minimapDrag = null; });
+minimapEl.addEventListener('pointercancel', () => { minimapDrag = null; });
+
+function setEditModeUI(on) {
+  const actual = setPoseEditMode(on, () => { syncPosePanel(); syncRing(); syncPosVal(); syncElev(); });
+  editMainBtn.classList.toggle('active', actual);
+  // The panel is the edit-mode tool drawer (#111): one state, one toggle.
+  posePanel.hidden = !actual;
+  poseRing.hidden = !actual;
+  poseElev.hidden = !actual;
+  minimapEl.classList.toggle('minimap-editable', actual);
+  if (actual) {
+    syncPosePanel();
+    syncRing();
+    syncElev();
+    syncPosVal();
+    poseStatus.textContent = 'Edit mode — rotate: drag the photo (ring = horizon, flip = 180°). Move: arrows/scale on the right, ⇧-drag the ground, or drag the minimap. Esc leaves edit mode.';
+  }
+  return actual;
+}
+
+editMainBtn.addEventListener('click', () => {
+  setEditModeUI(!isPoseEditMode());
+});
+
+// Ring drag: the angle around the screen centre maps to roll about the
+// viewing axis (clockwise on screen = positive, matching composePoseGesture).
+let ringLastAngle = null;
+const ringAngle = (e) => {
+  const r = poseRing.getBoundingClientRect();
+  return (Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180) / Math.PI;
+};
+poseRingHandle.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  try { poseRingHandle.setPointerCapture(e.pointerId); } catch { /* synthetic events (tests) have no real pointer */ }
+  ringLastAngle = ringAngle(e);
+});
+poseRingHandle.addEventListener('pointermove', (e) => {
+  if (ringLastAngle == null) return;
+  const a = ringAngle(e);
+  let delta = a - ringLastAngle;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  ringLastAngle = a;
+  applyPoseGesture({ aboutForward: delta });
+  syncPosePanel();
+  syncRing();
+});
+poseRingHandle.addEventListener('pointerup', () => { ringLastAngle = null; });
+poseRingHandle.addEventListener('pointercancel', () => { ringLastAngle = null; });
+
 exitBtn.addEventListener('click', () => {
   if (isStreetMode()) exitStreetView();
   leaveStreetUI();
 });
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  // Esc peels one layer at a time: edit mode first, then street view (#106).
+  if (isPoseEditMode()) {
+    setEditModeUI(false);
+    poseStatus.textContent = POSE_STATUS_DEFAULT;
+    return;
+  }
   if (isStreetMode()) exitStreetView();
   leaveStreetUI();
 });

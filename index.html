@@ -12,41 +12,57 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
+    <!-- Reading-first chrome (#111): a persistent header with the brand and a
+         SECONDARY utility to fix a panorama's rendering locally. MapMax reads
+         open data; it does not edit any server. -->
+    <header id="topbar">
+      <div id="brand">Map<span>Max</span></div>
+      <button type="button" id="edit-main" disabled
+              title="Enter a 360° panorama first — Adjust fixes its orientation and position in your browser only">🔧 Adjust</button>
+      <div id="topbar-spacer"></div>
+    </header>
     <div id="map"></div>
     <div id="hud">
-      <div id="hud-title">MapMax</div>
       <div id="hud-status">Loading map…</div>
       <div id="pic-info" hidden></div>
     </div>
-    <button type="button" id="exit-street" title="Back to map (Esc)" hidden>✕ Map</button>
-    <button type="button" id="flip-pano" title="Photo direction looks reversed? Flip this sequence 180° (#69)" hidden>↺ 180°</button>
-    <button type="button" id="pose-toggle" title="Horizon tilted or offset? Level this panorama (pitch / roll / yaw) (#98)" hidden>⌖ Level</button>
+    <button type="button" id="exit-street" title="Leave the panorama and return to the map (Esc)" hidden>← Back to map</button>
+    <!-- The edit-mode tool drawer (#111): opens/closes WITH edition mode via
+         the header's Edit button. ROTATION cluster (#106): the 180° flip and
+         the angle read-out; translation lives beside the ring (#pose-elev). -->
     <div id="pose-panel" hidden>
-      <div class="pose-row">
-        <label for="pose-pitch">Pitch</label>
-        <input type="range" id="pose-pitch" min="-45" max="45" step="0.5" value="0" aria-label="Capture pitch correction (degrees)">
-        <span class="pose-val" id="pose-pitch-val">0°</span>
-      </div>
-      <div class="pose-row">
-        <label for="pose-roll">Roll</label>
-        <input type="range" id="pose-roll" min="-45" max="45" step="0.5" value="0" aria-label="Capture roll correction (degrees)">
-        <span class="pose-val" id="pose-roll-val">0°</span>
-      </div>
-      <div class="pose-row">
-        <label for="pose-yaw">Yaw</label>
-        <input type="range" id="pose-yaw" min="-180" max="180" step="1" value="0" aria-label="Image-centre yaw offset from GPS direction (degrees)">
-        <span class="pose-val" id="pose-yaw-val">0°</span>
+      <button type="button" id="flip-pano" title="Photo direction looks reversed? Flip this sequence 180° (#69)">↺ Flip 180°</button>
+      <div class="pose-row" id="pose-readout">
+        <span id="pose-rot-val">Pitch 0° · Roll 0° · Yaw 0°</span>
       </div>
       <div class="pose-actions">
         <button type="button" id="pose-reset">Reset</button>
-        <button type="button" id="pose-save">Save to Panoramax</button>
       </div>
-      <button type="button" id="pose-connect">Connect to Panoramax</button>
-      <input type="password" id="pose-token" placeholder="…or paste an API token (kept for this session only)" autocomplete="new-password">
-      <div id="pose-status">Adjustments apply live and persist in this browser. With a token they are written back to Panoramax — fixed for everyone.</div>
-      <a id="pose-token-help" href="https://panoramax.openstreetmap.fr/api/users/me/tokens" target="_blank" rel="noopener">Get a token from this picture's Panoramax instance ↗</a>
+      <div id="pose-status">Corrections apply live and persist in this browser only.</div>
     </div>
     <canvas id="minimap" width="132" height="132" hidden></canvas>
+    <!-- Roll ring for the pose edit mode (#106): the dashed circle is visual
+         only (pointer-events none, photo drags pass through); the handle dot
+         is the grabbable part. -->
+    <div id="pose-ring" hidden>
+      <div id="pose-ring-handle" title="Turn to roll the photo"></div>
+    </div>
+    <!-- TRANSLATION cluster (#107), right of the rotation ring: everything
+         that MOVES the panorama — compass arrows (lon/lat, 30 cm per click,
+         ⇧ = 1 m), the elevation scale (−3 … +6 m) and the Δ read-outs. -->
+    <div id="pose-elev" hidden>
+      <div id="pose-pad" title="Move the panorama: 30 cm per click, ⇧-click = 1 m">
+        <button type="button" class="pad-n" data-e="0" data-n="1">▲</button>
+        <button type="button" class="pad-w" data-e="-1" data-n="0">◀</button>
+        <button type="button" class="pad-e" data-e="1" data-n="0">▶</button>
+        <button type="button" class="pad-s" data-e="0" data-n="-1">▼</button>
+      </div>
+      <div id="pose-elev-track">
+        <div id="pose-elev-handle" title="Drag to adjust the eye height"></div>
+      </div>
+      <span id="pose-elev-val">0.00 m</span>
+      <span id="pose-pos-val">ΔE 0.0 · ΔN 0.0</span>
+    </div>
     <div id="blend-control" hidden>
       <label for="blend">Photo ↔ Vector</label>
       <input type="range" id="blend" min="0" max="100" value="50" step="1"

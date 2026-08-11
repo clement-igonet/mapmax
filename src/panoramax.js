@@ -71,6 +71,29 @@ export const idFromHref = (href) => {
   return m ? m[1] : null;
 };
 
+// Tiled HD derivate (STAC tiled-assets) → the photosphere plugin's `tiles`
+// config for progressive refinement (plugin 0.3.0+). The meta-catalog includes
+// these fields on /collections/:id/items but STRIPS them from /search — pics
+// from a search need fetchTilesConfig() before entering.
+export function tilesFromStac(f) {
+  const matrix = f?.properties?.['tiles:tile_matrix_sets']?.geovisio?.tileMatrix?.[0];
+  const template = (f?.asset_templates?.tiles_webp || f?.asset_templates?.tiles)?.href;
+  if (!matrix || !template) return null;
+  return {
+    width: Math.round(matrix.matrixWidth * matrix.tileWidth),
+    cols: matrix.matrixWidth,
+    rows: matrix.matrixHeight,
+    url: (col, row) => template.replace(/\{TileCol\}/g, col).replace(/\{TileRow\}/g, row),
+  };
+}
+
+// One small item fetch to recover the tiles config a /search result lacks.
+export async function fetchTilesConfig(pic) {
+  if (!pic?.sequenceId || !pic?.id) return null;
+  const f = await stac(`/collections/${encodeURIComponent(pic.sequenceId)}/items/${encodeURIComponent(pic.id)}`);
+  return tilesFromStac(f);
+}
+
 export function normalizeItem(f) {
   const p = f.properties || {};
   const links = f.links || [];
@@ -115,6 +138,9 @@ export function normalizeItem(f) {
     // read-only meta-catalog) and any camera-written capture pose.
     homeApi: homeApiBase(links, (links.find((l) => l.rel === 'self') || {}).href),
     exifPose: readPoseFromExif(p.exif),
+    // Progressive HD refinement (plugin 0.3.0): present on items-list results,
+    // null on /search results (fetchTilesConfig recovers it).
+    tiles: tilesFromStac(f),
   };
 }
 

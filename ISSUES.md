@@ -10,6 +10,9 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | PR(s) | State |
 |---|---|---|---|
+| [#106](https://github.com/clement-igonet/mapmax/issues/106) | Pose edit mode: rotate the photosphere graphically (drag yaw/pitch, ring roll) | [#108](https://github.com/clement-igonet/mapmax/pull/108) (draft) | gesture maths (view-space compose + Euler extraction) unit-tested; plugin drag routing; ring UI; Esc layering; containerized e2e ✓ |
+| [#111](https://github.com/clement-igonet/mapmax/issues/111) | Reader chrome: header + local-only 🔧 Adjust (product pivot: READ-oriented, no server edition) | [#113](https://github.com/clement-igonet/mapmax/pull/113) (draft, stacked on #109) | auth + write-back removed app-wide (live on in maplibre-gl-panoramax); local corrections kept; e2e asserts absence; on [sandbox](https://sandbox.mapmax.confinia.io) |
+| [#107](https://github.com/clement-igonet/mapmax/issues/107) | Position edit mode: ground ⇧-drag + draggable minimap (lat/lon) + elevation scale | [#109](https://github.com/clement-igonet/mapmax/pull/109) (draft, stacked on #108) | drag-first rework per user feedback: sliders → read-out, elevation gauge beside the roll ring, minimap drag with live corrected-position dots; lat/lon rides in the pose PATCH; altitude local-only (no API field) |
 | [#103](https://github.com/clement-igonet/mapmax/issues/103) | Adopt stock MapLibre ≥ v6.20 (with #8057) on all envs | — | promotion path decided; **blocked upstream** (latest v6.1.0, [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) open) |
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); branch-deploy flow still manual |
@@ -18,8 +21,8 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Notes |
 |---|---|---|
-| [#106](https://github.com/clement-igonet/mapmax/issues/106) | Pose edit mode: rotate the photosphere graphically (drag yaw/pitch, ring roll) | UX successor to the #98 sliders (kept as read-out) |
-| [#107](https://github.com/clement-igonet/mapmax/issues/107) | Position edit mode: move a pano on the map (lat/lon) + altitude | lat/lon PATCHable (v2.8.0); altitude has NO API field — local-only + upstream ask |
+| [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | **in flight**: plugin [PR #4](https://github.com/clement-igonet/maplibre-gl-photosphere/pull/4) (0.4.0 editor API on the 0.3.0 HD-tiles base, 30 tests green, untagged); next: vendor 0.4.0 into MapMax + Panoramax `tiles` config; plan in [docs/UPSTREAMING.md](docs/UPSTREAMING.md) |
+| [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | survey in [SOURCES.md](SOURCES.md); adapter interface first; editing stays Panoramax/GeoVisio-only |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
 | [#87](https://github.com/clement-igonet/mapmax/issues/87) | Position-only tile/LOD (app-level) | app-side mitigations shipped (#87 gate pin, #95 clip); full fix tracked upstream via #94 |

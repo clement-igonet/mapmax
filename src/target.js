@@ -17,6 +17,8 @@ export function pictureToTarget(pic, preferHd = false) {
     // Capture pose to undo in the shader (#98): localStorage/exif-resolved.
     panoPitch: pic.posePitch || 0,
     panoRoll: pic.poseRoll || 0,
+    // Tiled HD derivate → progressive refinement (plugin 0.3.0), when known.
+    tiles: pic.tiles || null,
   };
 }
 

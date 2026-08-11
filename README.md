@@ -22,29 +22,19 @@ TARGET_URL=https://clement-igonet.github.io/mapmax/ podman compose run --rm e2e
 
 The full suite (Deno + containerized Chromium e2e) is run after each deployment.
 
-## Correcting a panorama's pose (pitch / roll / yaw)
+## Fixing a panorama's rendering (locally)
 
-Inside a 360° panorama, the **⌖ Level** button opens the pose corrector (#98):
-pitch/roll level the horizon, yaw fine-rotates the scene. Adjustments apply
-live and persist per sequence in your browser. With a **Panoramax API token**
-they are written back to the picture's home instance (`PATCH`) — fixed at the
-source, for every viewer.
+MapMax is **read-oriented**: it visualizes open street-level imagery and never
+writes to any server. Inside a 360° panorama, the header's **🔧 Adjust**
+utility opens an edition mode to fix how the picture renders — drag rotates
+the photo (ring = horizon, ↺ = 180° flip), the right-hand cluster moves it
+(compass arrows, elevation scale, ⇧-drag the ground, drag the minimap). All
+corrections apply live and persist **in your browser only** (localStorage).
 
-### Getting a Panoramax token, step by step
-
-1. **Sign in** on the picture's home instance (e.g.
-   https://panoramax.openstreetmap.fr) — it uses your OpenStreetMap account.
-2. In the same browser, open `<instance>/api/users/me/tokens` — a JSON list of
-   your tokens; note the `id` of one. (The ⌖ Level panel's *"Get a token"* link
-   opens exactly this page for the current picture's instance.)
-3. Open `<instance>/api/users/me/tokens/<id>` — copy the `jwt_token` value
-   (a long `eyJ…` string). That string is the token.
-4. Paste it into the ⌖ Level panel's token field → *Save to Panoramax*.
-
-Notes: pose edits on someone else's picture require the owner/instance to allow
-collaborative metadata editing — otherwise the API answers 403 and your
-correction still applies locally. The token is kept in `sessionStorage` for the
-session only, never persisted.
+Apps that want to write corrections back to a Panoramax instance can build on
+[maplibre-gl-panoramax](https://github.com/clement-igonet/maplibre-gl-panoramax)
+(pose/position PATCH builders + the sign-in claim flow, extracted from an
+earlier MapMax iteration) — deliberately outside this app.
 
 ## Status
 

@@ -1,16 +1,22 @@
-// Vendored from clement-igonet/maplibre-plugin-photosphere (npm
-// maplibre-gl-photosphere), plus the street-view sequence additions
-// (_loadTexture / enter(target) / goTo / onMove) described in the plugin's
-// reference notes. Kept in-tree so the mapmax Pages site is self-contained
-// (buildless ESM, maplibre-gl as a peer). See SPECIFICATIONS.md §2.1–2.5.
+// maplibre-gl-photosphere — immersive 360° photosphere plugin for MapLibre GL JS.
 //
 // The layer renders through MapLibre's CustomLayerInterface: a full-screen
 // fragment shader ray-casts each pixel against a finite sphere centered on the
-// anchor and samples the equirectangular texture. At the sphere center this is
-// plain 360° sampling; during the enter transition the eye offset gives real
-// approach parallax.
+// anchor and samples the equirectangular texture. Includes Street-View-style
+// sequence navigation (enter/goTo with a smooth zoom-crossfade walk), keyboard/
+// touch look + FOV zoom, photo↔vector blending, in-shader ground navigation
+// arrows and neighbour dots (never clipped by the map near plane), and
+// per-panorama orientation (heading yaw offset for panoramas whose image centre
+// does not face their recorded azimuth). Panoramas with a tiled HD derivate
+// (Panoramax-style col/row grids) refine progressively: the texture becomes a
+// full-panorama atlas seeded with the base image and visible tiles stream in.
 import { MercatorCoordinate } from 'maplibre-gl';
-import { panoPoseMatrix } from '../pose.js';
+import { visibleTiles } from './tiles.js';
+import { panoPoseMatrix } from './pose.js';
+
+export * from './pose.js';
+
+export { visibleTiles };
 
 const VERTEX_SHADER_SOURCE = `
     attribute vec2 aPosition;
@@ -20,6 +26,10 @@ const VERTEX_SHADER_SOURCE = `
         gl_Position = vec4(aPosition, 0.0, 1.0);
     }
 `;
+
+const TILE_CONCURRENCY = 4; // parallel tile downloads while refining
+const TILE_REFRESH_MS = 150; // debounce between look/zoom and a tile refresh
+const ATLAS_MAX = 8192; // atlas width cap (px) — beyond this, tiles downscale
 
 const MAX_ARROWS = 6;
 const ARROW_GROUND_DIST = 5; // where a ground arrow sits, from the eye (m)
@@ -42,7 +52,7 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform vec3 uSphereCenterOffset2;
     uniform sampler2D uPanorama2;
     uniform float uMix;            // 0 = current pano only, 1 = next pano only
-    uniform mat3 uPanoRot;         // world→camera pose of the current image: yaw (#52) + pitch/roll (#98)
+    uniform mat3 uPanoRot;         // world→camera capture pose of the current image (yaw + pitch/roll)
     uniform mat3 uPanoRot2;        // ...and the next image's, during a walk
     uniform vec2 uWalkDir;         // unit horizontal travel direction (east, north) during a walk (#64)
     uniform float uEyeHeight;      // eye height above the ground (m)
@@ -52,10 +62,10 @@ const FRAGMENT_SHADER_SOURCE = `
     uniform vec2 uPois[${MAX_POIS}];     // neighbour-pano ground positions (east, north) m
 
     // Ray-cast one panorama sphere; returns rgb + hit-alpha (a = 0 on a miss).
-    // panoRot is the world→camera rotation of the capture pose (yaw from
-    // view:azimuth #52, plus pitch/roll #98, built by panoPoseMatrix): applying
-    // it to the hit direction expresses it in the camera frame, aligning the
-    // photo to the map/vector world and levelling a tilted capture.
+    // panoRot is the world→camera rotation of the capture pose (yaw from the
+    // image-centre azimuth, plus pitch/roll — built by panoPoseMatrix): applying
+    // it to the hit direction expresses it in the capture-camera frame, aligning
+    // the photo to the world and levelling a tilted capture.
     vec4 sampleSphere(vec3 viewDir, vec3 centerOffset, sampler2D tex, mat3 panoRot) {
         vec3 originToCenter = -centerOffset;
         float b = dot(originToCenter, viewDir);
@@ -68,7 +78,7 @@ const FRAGMENT_SHADER_SOURCE = `
         float t = tNear > 0.0 ? tNear : tFar;
         if (t < 0.0) return vec4(0.0);
         vec3 normal = normalize(viewDir * t - centerOffset);
-        vec3 nc = panoRot * normal;   // world dir → capture-camera frame (#98)
+        vec3 nc = panoRot * normal;   // world dir → capture-camera frame
         float theta = atan(nc.x, nc.y);
         float phi = asin(clamp(nc.z, -1.0, 1.0));
         vec4 color = texture2D(tex, vec2(0.5 + theta / (2.0 * 3.14159265359), 0.5 - phi / 3.14159265359));
@@ -220,13 +230,21 @@ export class Photosphere {
         this._transitioning = false;
         this._panoYawDeg = 0; //  world azimuth the current image centre faces (#52)
         this._panoYawDeg2 = 0; // ...the next image's, during a walk
-        this._panoPitchDeg = 0; // capture pose correction: pitch/roll (#98)
+        this._panoPitchDeg = 0; // capture pose correction: pitch/roll
         this._panoRollDeg = 0;
         this._panoPitchDeg2 = 0; // ...the next image's, during a walk
         this._panoRollDeg2 = 0;
         this._walkDir = [0, 0]; // unit (east, north) travel direction during a walk (#64)
         this._gl = null;
         this._layerCtx = null;
+        // Progressive HD tiles: {width, cols, rows, url(col, row)} per panorama.
+        // The current texture becomes a full-panorama atlas seeded with the base
+        // image; visible tiles then texSubImage2D into it (v0.3.0).
+        this._tiles = this._options.tiles || null;
+        this._tilesNext = null; // the walk target's tiles config, adopted on arrival
+        this._tileState = null; // {tiles, scale, loaded, inflight, queue} for the current atlas
+        this._tileEpoch = 0; // bumps on every pano/atlas change; stale loads check it
+        this._tileTimer = null;
 
         this._layer = this._createLayer();
         // MapLibre 6's internal `map.style` is not a truthy public property, so
@@ -278,13 +296,15 @@ export class Photosphere {
     get yaw() { return this._yawDeg; }
     get pitch() { return this._pitchDeg; }
 
-    // Live pose correction of the CURRENT panorama (mapmax #98): yaw = world
-    // azimuth of the image centre, pitch/roll = capture tilt to undo. Only the
-    // components provided are changed.
+    // Live capture-pose correction of the CURRENT panorama: yaw = world azimuth
+    // of the image centre, pitch/roll = capture tilt to undo. Only the
+    // components provided are changed. Re-schedules the HD-tile refresh — a
+    // pose change moves which texture regions are on screen.
     setPanoPose({ yaw, pitch, roll } = {}) {
         if (typeof yaw === 'number') this._panoYawDeg = yaw;
         if (typeof pitch === 'number') this._panoPitchDeg = pitch;
         if (typeof roll === 'number') this._panoRollDeg = roll;
+        this._scheduleTileRefresh();
         this._map.triggerRepaint();
     }
 
@@ -292,23 +312,32 @@ export class Photosphere {
         return { yaw: this._panoYawDeg, pitch: this._panoPitchDeg, roll: this._panoRollDeg };
     }
 
-    // Ground navigation arrows rendered inside the panorama layer (mapmax #26).
-    // `list` = [{ bearing (deg toward the target), id }].
-    setNavArrows(list) {
-        this._navArrows = Array.isArray(list) ? list.slice(0, MAX_ARROWS) : [];
+    // Pose-edit mode: while a callback is set, drags feed it
+    // (dxDeg, dyDeg, {x, y, prevX, prevY, shiftKey}) instead of moving the
+    // camera — the editor composes them onto the pose (see composePoseGesture).
+    // null restores normal look-around.
+    setPoseEditDrag(cb) {
+        this._poseEditDrag = typeof cb === 'function' ? cb : null;
+    }
+
+    // Move the anchor (and optionally the eye height) of the CURRENT panorama
+    // in place — position-correction editing.
+    setAnchor(lngLat, eyeHeight) {
+        if (Array.isArray(lngLat)) this._options.lngLat = lngLat;
+        if (typeof eyeHeight === 'number' && Number.isFinite(eyeHeight)) {
+            this._options.eyeHeight = Math.max(0.2, eyeHeight);
+        }
+        if (this._mode === 'inside') {
+            this._recalibrateLookTargetDistance();
+            this._updateCameraWhileInside();
+        }
         this._map.triggerRepaint();
     }
 
-    // Neighbour-panorama dots rendered on the floor (mapmax #39).
-    // `list` = [{ east, north (m from the eye), id }].
-    setNavPois(list) {
-        this._navPois = Array.isArray(list) ? list.slice(0, MAX_POIS) : [];
-        this._map.triggerRepaint();
-    }
-
-    // The id of the arrow or POI dot under screen pixel (px, py), or null. Ray-
-    // casts the floor with the same view maths as the shader (works at any pitch).
-    groundPick(px, py) {
+    // Ground point (east, north) metres from the eye under screen pixel
+    // (px, py), or null above the horizon — the floor raycast shared by
+    // groundPick and position-editing drags.
+    groundPointAt(px, py) {
         const canvas = this._map.getCanvas();
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
@@ -328,7 +357,28 @@ export class Photosphere {
         ]);
         if (vd[2] >= -1e-4) return null; // not looking at the floor
         const t = -this._options.eyeHeight / vd[2];
-        const g = [vd[0] * t, vd[1] * t];
+        return [vd[0] * t, vd[1] * t];
+    }
+
+    // Ground navigation arrows rendered inside the panorama layer (mapmax #26).
+    // `list` = [{ bearing (deg toward the target), id }].
+    setNavArrows(list) {
+        this._navArrows = Array.isArray(list) ? list.slice(0, MAX_ARROWS) : [];
+        this._map.triggerRepaint();
+    }
+
+    // Neighbour-panorama dots rendered on the floor (mapmax #39).
+    // `list` = [{ east, north (m from the eye), id }].
+    setNavPois(list) {
+        this._navPois = Array.isArray(list) ? list.slice(0, MAX_POIS) : [];
+        this._map.triggerRepaint();
+    }
+
+    // The id of the arrow or POI dot under screen pixel (px, py), or null. Ray-
+    // casts the floor with the same view maths as the shader (works at any pitch).
+    groundPick(px, py) {
+        const g = this.groundPointAt(px, py);
+        if (!g) return null;
         for (const a of this._navArrows) {
             const br = a.bearing * Math.PI / 180;
             const ap = [ARROW_GROUND_DIST * Math.sin(br), ARROW_GROUND_DIST * Math.cos(br)];
@@ -357,6 +407,7 @@ export class Photosphere {
         this._yawDeg = (this._yawDeg + deltaYawDeg + 360) % 360;
         this._pitchDeg = Math.max(minPitch, Math.min(maxPitch, this._pitchDeg + deltaPitchDeg));
         this._updateCameraWhileInside();
+        this._scheduleTileRefresh();
         this._map.triggerRepaint();
     }
 
@@ -367,6 +418,7 @@ export class Photosphere {
         if (this._mode === 'inside') {
             this._recalibrateLookTargetDistance();
             this._updateCameraWhileInside();
+            this._scheduleTileRefresh();
         }
         this._map.triggerRepaint();
     }
@@ -392,6 +444,9 @@ export class Photosphere {
             if (target.lngLat) this._options.lngLat = target.lngLat;
             if (target.imageUrl) {
                 this._options.imageUrl = target.imageUrl;
+                this._tiles = target.tiles || null;
+                this._tileState = null;
+                this._tileEpoch++;
                 this._loadTexture(target.imageUrl);
             }
         }
@@ -421,6 +476,7 @@ export class Photosphere {
         this._animate({ center: lngLat, zoom, pitch: 90, bearing: this._yawDeg }, eyeHeight, 1, () => {
             this._mode = 'inside';
             this._updateCameraWhileInside();
+            this._scheduleTileRefresh();
             if (onEnter) onEnter();
         });
     }
@@ -440,6 +496,7 @@ export class Photosphere {
             : typeof target.bearing === 'number' ? target.bearing : this._panoYawDeg;
         this._panoPitchDeg2 = typeof target.panoPitch === 'number' ? target.panoPitch : 0;
         this._panoRollDeg2 = typeof target.panoRoll === 'number' ? target.panoRoll : 0;
+        this._tilesNext = target.tiles || null;
         this._loadInto('texture2', target.imageUrl, (err) => {
             if (this._mode !== 'inside') return;
             if (err) { // fall back to an instant swap rather than getting stuck
@@ -493,11 +550,14 @@ export class Photosphere {
             const tmp = layer.texture;
             layer.texture = layer.texture2;
             layer.texture2 = tmp;
+            const tmpImage = layer.textureImage;
+            layer.textureImage = layer.texture2Image;
+            layer.texture2Image = tmpImage;
             layer.textureReady = true;
         }
         this._options.lngLat = toAnchor;
         this._options.imageUrl = imageUrl;
-        // Promote the next pano's heading and pose to current (#52, #98).
+        // Promote the next pano's heading and pose to current (#52).
         if (typeof target.panoYaw === 'number') this._panoYawDeg = target.panoYaw;
         else if (typeof target.bearing === 'number') this._panoYawDeg = target.bearing;
         this._panoPitchDeg = this._panoPitchDeg2;
@@ -505,6 +565,14 @@ export class Photosphere {
         this._endTransitionState();
         this._recalibrateLookTargetDistance();
         this._updateCameraWhileInside();
+        // Adopt the new pano's tiles and start refining from its base (v0.3.0).
+        this._tiles = this._tilesNext;
+        this._tilesNext = null;
+        this._tileState = null;
+        this._tileEpoch++;
+        if (this._tiles && layer && layer.textureImage) {
+            this._buildAtlas(layer.textureImage, this._tiles);
+        }
         this._map.triggerRepaint();
         if (this._options.onMove) this._options.onMove(target);
     }
@@ -540,6 +608,12 @@ export class Photosphere {
     }
 
     remove() {
+        if (this._tileTimer) {
+            clearTimeout(this._tileTimer);
+            this._tileTimer = null;
+        }
+        this._tileState = null;
+        this._tileEpoch++;
         const map = this._map;
         const container = map.getContainer();
         container.removeEventListener('mousedown', this._onMouseDown);
@@ -571,7 +645,14 @@ export class Photosphere {
         image.onload = () => {
             gl.bindTexture(gl.TEXTURE_2D, layer[slot]);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-            if (slot === 'texture') layer.textureReady = true;
+            layer[slot + 'Image'] = image; // kept to seed a tile atlas later
+            if (slot === 'texture') {
+                layer.textureReady = true;
+                // The base is up (usable as-is); refine it with HD tiles if the
+                // current panorama has a tiles config (v0.3.0).
+                this._tileState = null;
+                if (this._tiles) this._buildAtlas(image, this._tiles);
+            }
             this._map.triggerRepaint();
             if (onReady) onReady();
         };
@@ -581,6 +662,139 @@ export class Photosphere {
 
     _loadTexture(url, onReady) {
         this._loadInto('texture', url, onReady);
+    }
+
+    // ---- Progressive HD tiles (v0.3.0) --------------------------------------
+    // The current texture is re-allocated as a full-panorama atlas (capped by
+    // MAX_TEXTURE_SIZE / ATLAS_MAX), seeded with the base image scaled up, then
+    // visible tiles stream into it with texSubImage2D. The fragment shader is
+    // untouched — it keeps sampling one equirectangular texture.
+
+    // Re-uploads the base image at atlas size and resets the tile state.
+    _buildAtlas(image, tiles) {
+        const gl = this._gl;
+        const layer = this._layerCtx;
+        if (!gl || !layer || !image || !tiles || !tiles.width || !tiles.cols || !tiles.rows) return;
+        const maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096;
+        const atlasW = Math.min(tiles.width, maxTexture, ATLAS_MAX);
+        const atlasH = Math.round(atlasW / 2);
+        const epoch = ++this._tileEpoch;
+        this._scaled(image, atlasW, atlasH).then((source) => {
+            if (epoch !== this._tileEpoch || !this._gl) return;
+            gl.bindTexture(gl.TEXTURE_2D, layer.texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+            if (source.close) source.close();
+            this._tileState = {
+                tiles,
+                epoch,
+                scale: atlasW / tiles.width,
+                loaded: new Set(),
+                inflight: new Set(),
+                queue: []
+            };
+            this._map.triggerRepaint();
+            this._scheduleTileRefresh();
+        }).catch(() => { /* keep the plain base — refinement is best-effort */ });
+    }
+
+    // Image scaled to (w, h), as an ImageBitmap when the browser can, else a
+    // canvas. Off-main-thread decode + resize where available.
+    _scaled(image, w, h) {
+        if (image.width === w && image.height === h) return Promise.resolve(image);
+        if (typeof createImageBitmap === 'function') {
+            return createImageBitmap(image, { resizeWidth: w, resizeHeight: h, resizeQuality: 'high' })
+                .catch(() => this._scaledCanvas(image, w, h));
+        }
+        return Promise.resolve(this._scaledCanvas(image, w, h));
+    }
+
+    _scaledCanvas(image, w, h) {
+        const canvas = this._scratchCanvas || (this._scratchCanvas = document.createElement('canvas'));
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(image, 0, 0, w, h);
+        return canvas;
+    }
+
+    // Debounced entry point, called after every look / zoom / walk settle.
+    _scheduleTileRefresh() {
+        if (this._tileTimer || !this._tileState) return;
+        this._tileTimer = setTimeout(() => {
+            this._tileTimer = null;
+            this._refreshTiles();
+        }, TILE_REFRESH_MS);
+    }
+
+    // Recomputes the visible tiles for the current camera and reloads the queue
+    // (most-central first); already-loaded and in-flight tiles are skipped.
+    _refreshTiles() {
+        const state = this._tileState;
+        if (!state || this._mode !== 'inside' || this._transitioning) return;
+        const canvas = this._map.getCanvas();
+        const aspect = (canvas.clientWidth || canvas.width || 1) / (canvas.clientHeight || canvas.height || 1);
+        const wanted = visibleTiles({
+            yawDeg: this._yawDeg,
+            pitchDeg: this._pitchDeg,
+            panoRot: panoPoseMatrix(this._panoYawDeg, this._panoPitchDeg, this._panoRollDeg),
+            fovDeg: this._options.fov,
+            aspect,
+            cols: state.tiles.cols,
+            rows: state.tiles.rows
+        });
+        state.queue = wanted.filter(t => !state.loaded.has(`${t.col}x${t.row}`) && !state.inflight.has(`${t.col}x${t.row}`));
+        this._pumpTiles();
+    }
+
+    _pumpTiles() {
+        const state = this._tileState;
+        if (!state) return;
+        while (state.inflight.size < TILE_CONCURRENCY && state.queue.length) {
+            const tile = state.queue.shift();
+            const key = `${tile.col}x${tile.row}`;
+            if (state.loaded.has(key) || state.inflight.has(key)) continue;
+            state.inflight.add(key);
+            this._loadTile(state, tile, key);
+        }
+    }
+
+    _loadTile(state, tile, key) {
+        const done = () => {
+            if (this._tileState !== state) return; // pano changed mid-flight
+            state.inflight.delete(key);
+            state.loaded.add(key); // errors too: leave the base, don't retry-storm
+            this._pumpTiles();
+        };
+        const url = state.tiles.url(tile.col, tile.row);
+        if (!url) { done(); return; }
+        const image = new Image();
+        image.crossOrigin = 'anonymous';
+        image.onload = () => {
+            if (this._tileState !== state || !this._gl) return;
+            const rect = this._tileRect(state, tile);
+            this._scaled(image, rect.w, rect.h).then((source) => {
+                if (this._tileState === state && this._gl) {
+                    const gl = this._gl;
+                    gl.bindTexture(gl.TEXTURE_2D, this._layerCtx.texture);
+                    gl.texSubImage2D(gl.TEXTURE_2D, 0, rect.x, rect.y, gl.RGBA, gl.UNSIGNED_BYTE, source);
+                    if (source.close) source.close();
+                    this._map.triggerRepaint();
+                }
+                done();
+            }).catch(done);
+        };
+        image.onerror = done;
+        image.src = url;
+    }
+
+    // Atlas rectangle of a tile, rounded edge-by-edge so adjacent tiles always
+    // abut exactly (no cracks) at any atlas scale.
+    _tileRect(state, tile) {
+        const { tiles, scale } = state;
+        const x0 = Math.round(tile.col * tiles.width / tiles.cols * scale);
+        const x1 = Math.round((tile.col + 1) * tiles.width / tiles.cols * scale);
+        const y0 = Math.round(tile.row * (tiles.width / 2) / tiles.rows * scale);
+        const y1 = Math.round((tile.row + 1) * (tiles.width / 2) / tiles.rows * scale);
+        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     }
 
     _createLayer() {
@@ -800,12 +1014,27 @@ export class Photosphere {
             return;
         }
         const { dragSensitivity, minPitch, maxPitch } = this._options;
+        // Pose-edit mode: the drag manipulates the PHOTO, not the camera —
+        // deltas go to the editor callback (see setPoseEditDrag).
+        if (this._poseEditDrag) {
+            const prevX = this._lastX, prevY = this._lastY;
+            const dxDeg = (event.clientX - prevX) * dragSensitivity;
+            const dyDeg = (event.clientY - prevY) * dragSensitivity;
+            this._lastX = event.clientX;
+            this._lastY = event.clientY;
+            this._poseEditDrag(dxDeg, dyDeg, {
+                x: event.clientX, y: event.clientY, prevX, prevY,
+                shiftKey: !!event.shiftKey,
+            });
+            return;
+        }
         this._yawDeg = (this._yawDeg - (event.clientX - this._lastX) * dragSensitivity + 360) % 360;
         this._pitchDeg = Math.max(minPitch, Math.min(maxPitch,
             this._pitchDeg + (event.clientY - this._lastY) * dragSensitivity));
         this._lastX = event.clientX;
         this._lastY = event.clientY;
         this._updateCameraWhileInside();
+        this._scheduleTileRefresh();
         this._map.triggerRepaint();
     }
 
@@ -838,6 +1067,7 @@ export class Photosphere {
             this._lastX = t.clientX;
             this._lastY = t.clientY;
             this._updateCameraWhileInside();
+            this._scheduleTileRefresh();
             this._map.triggerRepaint();
         } else if (event.touches.length === 2 && this._pinchDist) {
             const d = this._touchDistance(event);
