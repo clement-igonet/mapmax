@@ -5,7 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, ST
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
+import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -250,9 +250,17 @@ const posePanel = document.getElementById('pose-panel');
 const poseStatus = document.getElementById('pose-status');
 const POSE_STATUS_DEFAULT = poseStatus.textContent;
 // The gestures ARE the controls (#106); this read-out just mirrors them.
-// Yaw is shown in ±180 around the GPS direction; storage/PATCH use [0,360).
+// Yaw is shown in ±180 around the GPS direction; storage uses [0,360).
 const poseRotVal = document.getElementById('pose-rot-val');
 const yawToSigned = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
+
+function syncPosePanel() {
+  const pose = getCurrentPose();
+  if (!pose || posePanel.hidden) return;
+  poseRotVal.textContent =
+    `Pitch ${pose.pitch.toFixed(1)}° · Roll ${pose.roll.toFixed(1)}° · Yaw ${yawToSigned(pose.yaw).toFixed(0)}°`;
+}
+onPictureChanged(() => syncPosePanel());
 
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
