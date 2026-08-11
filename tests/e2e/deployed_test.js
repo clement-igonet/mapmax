@@ -29,9 +29,12 @@ Deno.test('deployed JS modules are served', async () => {
     assertEquals(res.status, 200, `src/${mod}.js not deployed`);
     await res.body?.cancel();
   }
-  const plugin = await fetch(`${BASE}/src/vendor/photosphere-plugin.js`);
-  assertEquals(plugin.status, 200, 'vendored photosphere plugin not deployed');
-  await plugin.body?.cancel();
+  // The vendored maplibre-gl-photosphere 0.4.0 trio (#110 sync).
+  for (const f of ['index', 'tiles', 'pose']) {
+    const plugin = await fetch(`${BASE}/src/vendor/photosphere/${f}.js`);
+    assertEquals(plugin.status, 200, `vendored photosphere ${f}.js not deployed`);
+    await plugin.body?.cancel();
+  }
   // Vendored MapLibre build (PR #7932) + its shared chunk and module worker.
   for (const f of ['maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl-worker.mjs', 'maplibre-gl.css']) {
     const res = await fetch(`${BASE}/vendor/maplibre/${f}`);
