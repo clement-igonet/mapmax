@@ -9,10 +9,16 @@ maplibre-gl-js (core)          rendering engine, tiles, camera
        └─ MapMax               Panoramax product: data, persistence, write-back, UI
 ```
 
-The plugin repo (`clement-igonet/maplibre-gl-photosphere`) was last pushed
-**2026-07-29** — everything since (#98 → #107) lives only in MapMax's vendored
-copy ([src/vendor/photosphere-plugin.js](../src/vendor/photosphere-plugin.js))
-and is graduation material.
+**Layering rule (2026-08-11, user decision):** maplibre-gl-photosphere stays a
+source-agnostic 360° **viewer** — it may *render* corrections (pose model,
+pose-aware tiles, `setPanoPose`, `setAnchor`) and expose neutral hooks
+(`setPoseEditDrag`, `groundPointAt`), but ships **no editing**. Everything
+editorial — gesture algebra, write-back, editor demos — belongs to
+**maplibre-gl-panoramax** (the data-source layer; corrections live next to the
+API that stores them). The only edit surface photosphere may ever demo is one
+driven purely by OpenStreetMap data. Status: photosphere PR #4 (0.4.0, viewer
+scope) + maplibre-gl-panoramax v0.1.0 released / 0.2.0 (gesture algebra)
+unreleased.
 
 ## 1. Graduate to maplibre-gl-photosphere (generic 360° viewer/editor)
 
