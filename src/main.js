@@ -5,8 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, ST
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
-import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, savePoseToPanoramax, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
-import { claimPollDelays, parseGeneratedToken, tokenGenerateRequest, whoAmIRequest, PENDING_TOKEN_KEY, TOKEN_KEY } from './panoramaxauth.js';
+import { _photosphere, applyPoseGesture, currentPicture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -96,7 +95,7 @@ function revealStreetUI() {
   // The header's Edit entry (#111) arms only inside a panorama.
   const editMain = document.getElementById('edit-main');
   editMain.disabled = false;
-  editMain.title = 'Correct this panorama — orientation, horizon, position — and save it to Panoramax';
+  editMain.title = 'Fix this panorama\'s orientation and position — in your browser only';
 }
 let currentPic = null;
 onPictureChanged((pic) => {
@@ -222,7 +221,7 @@ const leaveStreetUI = () => {
   document.getElementById('minimap').hidden = true;
   const editMain = document.getElementById('edit-main');
   editMain.disabled = true;
-  editMain.title = 'Enter a 360° panorama first — Edit corrects its orientation and position, and saves to Panoramax';
+  editMain.title = 'Enter a 360° panorama first — Adjust fixes its orientation and position in your browser only';
   setEditModeUI(false); // closes the drawer + edit mode together (#111)
   // Back to the 50/50 default for the next entry (#101) — streetview.js resets
   // its remembered blend on exit to match.
@@ -243,165 +242,17 @@ document.getElementById('flip-pano').addEventListener('click', () => {
   syncPosePanel();
 });
 
-// Pose leveller (#98): pitch/roll/yaw sliders apply live (and persist per
-// sequence in this browser); with a Panoramax token the pose is PATCHed back
-// to the picture's home instance so the fix holds for every viewer.
+// Local corrections drawer (#98/#106/#111): MapMax is READ-oriented — the
+// gestures fix a panorama's rendering in this browser only; nothing is ever
+// written to any server (the write-back stack lives in maplibre-gl-panoramax
+// for apps that want it).
 const posePanel = document.getElementById('pose-panel');
 const poseStatus = document.getElementById('pose-status');
-const poseTokenInput = document.getElementById('pose-token');
 const POSE_STATUS_DEFAULT = poseStatus.textContent;
 // The gestures ARE the controls (#106); this read-out just mirrors them.
 // Yaw is shown in ±180 around the GPS direction; storage/PATCH use [0,360).
 const poseRotVal = document.getElementById('pose-rot-val');
 const yawToSigned = (yaw) => (yaw > 180 ? yaw - 360 : yaw);
-
-// The manual token link is a FALLBACK: pointless once a token is present
-// (connected or pasted), so it only shows while the field is empty (#104).
-const poseHelp = document.getElementById('pose-token-help');
-const syncPoseHelp = () => {
-  poseHelp.hidden = !!poseTokenInput.value.trim();
-};
-poseTokenInput.addEventListener('input', syncPoseHelp);
-
-function syncPosePanel() {
-  const pose = getCurrentPose();
-  if (!pose || posePanel.hidden) return;
-  poseRotVal.textContent =
-    `Pitch ${pose.pitch.toFixed(1)}° · Roll ${pose.roll.toFixed(1)}° · Yaw ${yawToSigned(pose.yaw).toFixed(0)}°`;
-  // Token help goes to the CURRENT picture's home instance (that's where the
-  // PATCH lands): sign in there, then this endpoint lists your tokens.
-  const home = currentPicture()?.homeApi;
-  if (home) poseHelp.href = `${home}/users/me/tokens`;
-  syncPoseHelp();
-}
-onPictureChanged(() => syncPosePanel());
-
-// Token lookup for the CURRENT picture's home instance — tokens are only valid
-// on the instance that issued them, so they're stored per instance (#104). The
-// un-keyed legacy entry is kept as a read fallback.
-const storedToken = () => {
-  const home = currentPicture()?.homeApi;
-  return (home && sessionStorage.getItem(TOKEN_KEY(home))) || sessionStorage.getItem('mapmax:panoramax-token') || '';
-};
-
-// The OAuth claim can complete AFTER the Connect poll gave up (slow sign-in,
-// tab left open, page reloaded meanwhile): the generated JWT is remembered per
-// instance (PENDING_TOKEN_KEY) and re-checked here on panel open and on Save,
-// so a finished sign-in is adopted no matter when it finished (#104).
-async function adoptPendingToken() {
-  const home = currentPicture()?.homeApi;
-  if (!home) return false;
-  const pending = sessionStorage.getItem(PENDING_TOKEN_KEY(home));
-  if (!pending) return false;
-  const who = whoAmIRequest(home, pending);
-  const res = await fetch(who.url, who.init).catch(() => null);
-  if (!res?.ok) return false; // not claimed yet — keep it pending
-  const me = await res.json().catch(() => ({}));
-  sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
-  sessionStorage.setItem(TOKEN_KEY(home), pending); // session only
-  poseTokenInput.value = pending;
-  syncPoseHelp();
-  setSignedIn(me.name);
-  poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
-  return true;
-}
-
-// Header auth chip (#111): OSM.org-style Sign in / Sign up ↔ account name.
-const authAnon = document.getElementById('auth-anon');
-const authAccount = document.getElementById('auth-account');
-function setSignedIn(name) {
-  authAnon.hidden = true;
-  authAccount.hidden = false;
-  document.getElementById('auth-name').textContent = name || 'Signed in';
-}
-function setSignedOut() {
-  authAnon.hidden = false;
-  authAccount.hidden = true;
-}
-document.getElementById('auth-signout').addEventListener('click', () => {
-  const home = currentPicture()?.homeApi;
-  if (home) {
-    sessionStorage.removeItem(TOKEN_KEY(home));
-    sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
-  }
-  sessionStorage.removeItem('mapmax:panoramax-token');
-  poseTokenInput.value = '';
-  syncPoseHelp();
-  setSignedOut();
-  poseStatus.textContent = 'Signed out — corrections stay local until you connect again.';
-});
-// Sign up: the account lives on the picture's home instance (OSM OAuth there);
-// the link retargets per picture, defaulting to the main instance.
-onPictureChanged((pic) => {
-  if (pic?.homeApi) {
-    document.getElementById('auth-signup').href = pic.homeApi.replace(/\/api$/, '');
-  }
-});
-
-// "Connect to Panoramax" (#104): generate an unclaimed token on the picture's
-// home instance, open its claim URL (the instance's OAuth / OSM login) in a new
-// tab, and poll users/me with the JWT until the account binds it.
-const poseConnectBtn = document.getElementById('pose-connect');
-poseConnectBtn.addEventListener('click', async () => {
-  const pic = currentPicture();
-  if (!pic) {
-    poseStatus.textContent = 'Enter a 360° panorama first — the connection targets the instance that hosts the current picture.';
-    return;
-  }
-  // Open the tab synchronously (inside the click) so popup blockers allow it.
-  const claimTab = window.open('', '_blank');
-  poseConnectBtn.disabled = true;
-  let home = pic.homeApi;
-  if (!home) {
-    // Some fetch paths can miss the `via` link — refetch the item for it.
-    try { home = (await getPicture(pic.id))?.homeApi; } catch { /* handled below */ }
-  }
-  if (!home) {
-    if (claimTab) claimTab.close();
-    poseConnectBtn.disabled = false;
-    poseStatus.textContent = 'Unknown home instance for this picture — paste a token instead.';
-    return;
-  }
-  try {
-    const gen = tokenGenerateRequest(home);
-    const res = await fetch(gen.url, gen.init);
-    const parsed = parseGeneratedToken(await res.json());
-    if (!parsed) throw new Error(`no claimable token from ${home}`);
-    // Survive the poll's lifetime: adopted later from panel-open/Save (#104).
-    sessionStorage.setItem(PENDING_TOKEN_KEY(home), parsed.jwt);
-    if (claimTab) claimTab.location = parsed.claimUrl;
-    else {
-      // Popup blocked: hand the claim URL to the help link instead.
-      poseHelp.href = parsed.claimUrl;
-      poseHelp.textContent = 'Pop-up blocked — open the sign-in page manually ↗';
-      poseHelp.hidden = false;
-    }
-    poseStatus.textContent = 'Sign in with your OpenStreetMap account in the opened tab — waiting for the connection…';
-    for (const delay of claimPollDelays()) {
-      await new Promise((r) => setTimeout(r, delay));
-      if (posePanel.hidden) return; // panel closed — stop polling quietly
-      const who = whoAmIRequest(home, parsed.jwt);
-      const meRes = await fetch(who.url, who.init).catch(() => null);
-      if (meRes?.ok) {
-        const me = await meRes.json().catch(() => ({}));
-        sessionStorage.removeItem(PENDING_TOKEN_KEY(home));
-        sessionStorage.setItem(TOKEN_KEY(home), parsed.jwt); // session only
-        poseTokenInput.value = parsed.jwt;
-        syncPoseHelp(); // token present — the manual fallback link disappears
-        setSignedIn(me.name); // header chip (#111)
-        poseStatus.textContent = `Connected${me.name ? ` as ${me.name}` : ''} — Save to Panoramax is ready.`;
-        status(`Connected to Panoramax${me.name ? ` as ${me.name}` : ''}.`);
-        return;
-      }
-    }
-    poseStatus.textContent = 'Still waiting for the sign-in — finish it in the opened tab, then press Save: the connection is picked up automatically.';
-  } catch (err) {
-    if (claimTab) claimTab.close();
-    poseStatus.textContent = `Connect failed: ${err?.message || 'network error'}. You can paste a token instead.`;
-  } finally {
-    poseConnectBtn.disabled = false;
-  }
-});
 
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
@@ -514,8 +365,6 @@ function setEditModeUI(on) {
   poseElev.hidden = !actual;
   minimapEl.classList.toggle('minimap-editable', actual);
   if (actual) {
-    poseTokenInput.value = storedToken();
-    if (!poseTokenInput.value) adoptPendingToken(); // fire-and-forget check
     syncPosePanel();
     syncRing();
     syncElev();
@@ -527,17 +376,6 @@ function setEditModeUI(on) {
 
 editMainBtn.addEventListener('click', () => {
   setEditModeUI(!isPoseEditMode());
-});
-
-// Header Sign in (#111): runs the #104 Connect flow (needs a current picture —
-// the token belongs to its home instance).
-document.getElementById('auth-signin').addEventListener('click', () => {
-  if (!isStreetMode()) {
-    status('Click into a 360° panorama first — sign-in targets the instance hosting the picture.');
-    return;
-  }
-  poseConnectBtn.click();
-  status('Sign-in tab opened — complete the OpenStreetMap login there.');
 });
 
 // Ring drag: the angle around the screen centre maps to roll about the
@@ -567,22 +405,6 @@ poseRingHandle.addEventListener('pointermove', (e) => {
 poseRingHandle.addEventListener('pointerup', () => { ringLastAngle = null; });
 poseRingHandle.addEventListener('pointercancel', () => { ringLastAngle = null; });
 
-document.getElementById('pose-save').addEventListener('click', async () => {
-  let token = poseTokenInput.value.trim();
-  // A sign-in finished after the poll gave up? Adopt it now and save through.
-  if (!token && await adoptPendingToken()) token = poseTokenInput.value.trim();
-  if (!token) {
-    poseStatus.textContent = 'No token — the correction stays in this browser only. Use Connect, or paste a Panoramax API token, to fix it at the source.';
-    return;
-  }
-  const home = currentPicture()?.homeApi;
-  sessionStorage.setItem(home ? TOKEN_KEY(home) : 'mapmax:panoramax-token', token); // session only — never persisted
-  poseStatus.textContent = 'Saving pose to Panoramax…';
-  const res = await savePoseToPanoramax(token);
-  poseStatus.textContent = res.ok
-    ? `Saved — pose${getCurrentPositionOffset()?.e || getCurrentPositionOffset()?.n ? ' and position' : ''} corrected on Panoramax for every viewer.${res.altitudeLocalOnly ? ' (Altitude has no API field — it stays local.)' : ''}`
-    : `Save failed: ${res.error || res.status}. The correction still applies in this browser.`;
-});
 exitBtn.addEventListener('click', () => {
   if (isStreetMode()) exitStreetView();
   leaveStreetUI();

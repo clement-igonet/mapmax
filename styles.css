@@ -31,70 +31,32 @@ body {
 
 #brand span { color: #ff6f00; }
 
+/* A muted utility, not a call-to-action: MapMax is read-oriented. */
 #edit-main {
-  background: #2962ff;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-#edit-main:hover:not(:disabled) { background: #3b74ff; }
-
-#edit-main:disabled {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.45);
-  cursor: default;
-}
-
-#edit-main.active {
-  background: #ff6f00;
-}
-
-#topbar-spacer { flex: 1; }
-
-#auth-anon { display: flex; align-items: center; gap: 10px; }
-
-#auth-signin {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 6px;
   padding: 5px 12px;
   font-size: 13px;
   cursor: pointer;
 }
 
-#auth-signin:hover { background: rgba(255, 255, 255, 0.22); }
+#edit-main:hover:not(:disabled) { background: rgba(255, 255, 255, 0.2); }
 
-#auth-signup {
-  color: #7ab8ff;
-  font-size: 13px;
-  text-decoration: none;
+#edit-main:disabled {
+  color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.12);
+  cursor: default;
 }
 
-#auth-signup:hover { text-decoration: underline; }
-
-#auth-account { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-
-#auth-account[hidden] { display: none; }
-
-#auth-name { color: #ffd9b3; }
-
-#auth-signout {
-  background: none;
-  color: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
+#edit-main.active {
+  background: #ff6f00;
+  border-color: #ff6f00;
+  color: #fff;
 }
 
-#auth-signout:hover { color: #fff; }
+#topbar-spacer { flex: 1; }
 
 #map {
   position: absolute;
@@ -395,44 +357,15 @@ body {
   cursor: grabbing;
 }
 
-#pose-connect {
-  background: #2962ff;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 7px 8px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
 
-#pose-connect:hover {
-  background: #3b74ff;
-}
 
-#pose-connect:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
 
-#pose-token {
-  background: rgb(34, 36, 41); /* opaque — sits directly over the photo now */
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 12px;
-}
 
 #pose-status {
   color: rgba(255, 255, 255, 0.75);
   line-height: 1.4;
 }
 
-#pose-token-help {
-  color: #7ab8ff;
-  font-size: 12px;
-}
 
 #minimap {
   position: absolute;

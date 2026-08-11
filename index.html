@@ -12,21 +12,14 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <!-- OSM.org-style chrome (#111): persistent header with the brand, the
-         Edit entry point (disabled outside a panorama) and Panoramax auth. -->
+    <!-- Reading-first chrome (#111): a persistent header with the brand and a
+         SECONDARY utility to fix a panorama's rendering locally. MapMax reads
+         open data; it does not edit any server. -->
     <header id="topbar">
       <div id="brand">Map<span>Max</span></div>
       <button type="button" id="edit-main" disabled
-              title="Enter a 360° panorama first — Edit corrects its orientation and position, and saves to Panoramax">✏️ Edit</button>
+              title="Enter a 360° panorama first — Adjust fixes its orientation and position in your browser only">🔧 Adjust</button>
       <div id="topbar-spacer"></div>
-      <div id="auth-anon">
-        <button type="button" id="auth-signin" title="Sign in to this picture's Panoramax instance (OpenStreetMap account)">Sign in</button>
-        <a id="auth-signup" href="https://panoramax.openstreetmap.fr" target="_blank" rel="noopener" title="Create an account on the Panoramax instance">Sign up</a>
-      </div>
-      <div id="auth-account" hidden>
-        <span id="auth-name"></span>
-        <button type="button" id="auth-signout" title="Forget this session's Panoramax token">Sign out</button>
-      </div>
     </header>
     <div id="map"></div>
     <div id="hud">
@@ -44,12 +37,8 @@
       </div>
       <div class="pose-actions">
         <button type="button" id="pose-reset">Reset</button>
-        <button type="button" id="pose-save">Save to Panoramax</button>
       </div>
-      <button type="button" id="pose-connect">Connect to Panoramax</button>
-      <input type="password" id="pose-token" placeholder="…or paste an API token (kept for this session only)" autocomplete="new-password">
-      <div id="pose-status">Adjustments apply live and persist in this browser. With a token they are written back to Panoramax — fixed for everyone.</div>
-      <a id="pose-token-help" href="https://panoramax.openstreetmap.fr/api/users/me/tokens" target="_blank" rel="noopener">Get a token from this picture's Panoramax instance ↗</a>
+      <div id="pose-status">Corrections apply live and persist in this browser only.</div>
     </div>
     <canvas id="minimap" width="132" height="132" hidden></canvas>
     <!-- Roll ring for the pose edit mode (#106): the dashed circle is visual

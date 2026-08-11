@@ -83,14 +83,14 @@ const chrome = await page.evaluate(() => ({
   topbar: !!document.getElementById('topbar'),
   brand: document.getElementById('brand')?.textContent || '',
   editDisabled: document.getElementById('edit-main')?.disabled === true,
-  signinShown: !document.getElementById('auth-anon').hidden,
-  accountHidden: document.getElementById('auth-account').hidden,
+  // Read-oriented app: no auth, no server write-back — assert their ABSENCE.
+  noAuth: !document.getElementById('auth-signin') && !document.getElementById('pose-connect') && !document.getElementById('pose-save') && !document.getElementById('pose-token'),
 }));
 assert.ok(chrome.topbar, 'header bar missing (#111)');
 assert.match(chrome.brand, /MapMax/, 'brand missing from the header (#111)');
-assert.ok(chrome.editDisabled, 'Edit must be disabled in map mode (#111)');
-assert.ok(chrome.signinShown && chrome.accountHidden, 'anonymous auth entries not shown (#111)');
-console.log('[e2e] OSM-style header: brand + disarmed Edit + Sign in/Sign up (#111) OK');
+assert.ok(chrome.editDisabled, 'Adjust must be disabled in map mode (#111)');
+assert.ok(chrome.noAuth, 'read-oriented app must ship no auth/write-back UI (#111)');
+console.log('[e2e] reader chrome: brand + disarmed Adjust + no auth/write-back UI (#111) OK');
 
 // Map-mode clutter cap (#41): the tilt is limited so the map never renders 3D
 // buildings + Panoramax dots out to the horizon, and the limit rises as you zoom
@@ -476,13 +476,6 @@ if (nav.skipped) {
   assert.ok(pose.editEnabled, 'header Edit button not armed in street mode (#111)');
   assert.ok(pose.panelOpen, 'Edit did not open the tool drawer (#111)');
   assert.ok(pose.stillInside, 'leaving edit mode must not exit the panorama (#111)');
-  // #104: the Connect button is present in the open panel (the OAuth claim
-  // dance itself can't run in CI — its request builders are unit-tested).
-  const connectPresent = await page.evaluate(() => {
-    const b = document.getElementById('pose-connect');
-    return !!b && !b.disabled && /connect/i.test(b.textContent);
-  });
-  assert.ok(connectPresent, 'Connect to Panoramax button missing from the pose panel (#104)');
   assert.equal(pose.before.pitch, 0, 'pose pitch should start at the metadata value (#98)');
   assert.equal(pose.after.pitch, -6, 'pitch not live-applied to the shader pose (#98)');
   assert.equal(pose.after.roll, 3, 'roll not live-applied to the shader pose (#98)');
