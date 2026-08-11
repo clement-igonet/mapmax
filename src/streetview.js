@@ -270,6 +270,95 @@ export function setPoseEditMode(on, onChange) {
   return poseEditOn;
 }
 
+// Enter street view at `pic` (first click) or walk to it (already inside).
+export async function enterStreetView(map, pic) {
+  flushPoseSave(); // a still-pending pose write must land before we read the store (#98)
+  // /search results lack the tiled-HD fields — recover them in parallel with
+  // the sun-compass resolution so HD refinement works on every entry path.
+  const [yawOffset, tiles] = await Promise.all([
+    resolveYawOffset(pic),
+    pic.tiles ? Promise.resolve(pic.tiles) : fetchTilesConfig(pic).catch(() => null),
+  ]);
+  pic.yawOffset = yawOffset;
+  pic.tiles = tiles;
+  const pr = resolvePitchRoll(pic); // #98
+  pic.posePitch = pr.pitch;
+  pic.poseRoll = pr.roll;
+  pic.posOffset = resolvePositionOffset(pic); // #107
+  current = pic;
+  svMap = map;
+
+  if (!photosphere) {
+    const entry = pictureToTarget(pic, true);
+    photosphere = new Photosphere(map, {
+      ...PHOTOSPHERE,
+      lngLat: entry.lngLat,
+      imageUrl: entry.imageUrl,
+      exitView: { center: entry.lngLat, zoom: 17, pitch: 45, bearing: 0 },
+      onEnter: () => {
+        document.body.classList.add('street-mode');
+        // Stop the pitch-90 tile-loading explosion: the sphere hides the map,
+        // so suspend all tiled layers while inside (#11).
+        suspendTileLayers(map);
+        // Ground + sky backdrop so the vector-only view is never a raw-white
+        // void (#37).
+        applyStreetBackdrop(map);
+        // Start mixed, not photo-only (#101): applied here (after the suspend
+        // above) so the default 50/50 actually reveals the OSM layers.
+        setBlend(currentBlend);
+        // Re-anchor onto the corrected position, if this picture has one (#107).
+        applyPositionOverride();
+        // Honor an exit requested during the enter animation (e.g. Esc mid-entry).
+        if (pendingExit) {
+          pendingExit = false;
+          photosphere.exit();
+        }
+      },
+      onExit: () => {
+        document.body.classList.remove('street-mode');
+        removeStreetBackdrop(map);
+        try { map.setMaxPitch(MAP_MAX_PITCH); } catch { /* ignore */ }
+        // Next entry starts at the default mix again — matches the slider
+        // reset in main.js leaveStreetUI (#101).
+        currentBlend = STREET_DEFAULT_BLEND;
+        current = null;
+        emit(null);
+      },
+      onMove: () => {
+        // A walk lands on the target's ORIGINAL anchor — re-apply the new
+        // picture's position correction before anyone reads the state (#107).
+        applyPositionOverride();
+        emit(current);
+      },
+    });
+  }
+
+  // The plugin sits the camera at pitch ~90; give the transform the room.
+  try { map.setMaxPitch(STREET_MAX_PITCH); } catch { /* ignore */ }
+
+  if (photosphere.mode === 'inside') {
+    photosphere.goTo(pictureToTarget(pic));
+  } else if (photosphere.mode === 'outside') {
+    photosphere.enter(pictureToTarget(pic, true));
+  }
+  emit(pic);
+  return pic;
+}
+
+// Vector/photo blend (#6): alpha 1 = photo only (tiles suspended for #11),
+// alpha < 1 reveals the vector layers behind the semi-transparent photo.
+// Defaults to 50/50 on entry (#101); onEnter re-applies the remembered value.
+let currentBlend = STREET_DEFAULT_BLEND;
+export function setBlend(alpha) {
+  currentBlend = alpha;
+  if (!photosphere || !svMap) return;
+  photosphere.blend(alpha);
+  if (alpha >= 0.99) suspendTileLayers(svMap);
+  // Reveal OSM for mixing, but keep Panoramax tiles suspended so far POIs never
+  // load in street mode — nearby ones show via the bounded GeoJSON (#27).
+  else resumeTileLayers(svMap, ['panoramax']);
+}
+
 export function exitStreetView() {
   flushPoseSave(); // don't lose a tweak made just before Esc (#98)
   if (!photosphere) return;
