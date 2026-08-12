@@ -4,7 +4,9 @@ import { assert, assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
   _resetSources,
   allSources,
+  decodePicRef,
   defaultSource,
+  encodePicRef,
   fetchTilesConfig,
   getPicture,
   getSequence,
@@ -117,6 +119,23 @@ Deno.test('setSourceVisible: toggles only the declared layers that exist', () =>
   setSourceVisible(map, 'bare', false);
   setSourceVisible(map, 'unknown', false);
   assertEquals(calls.length, 2); // nothing further
+  _resetSources();
+});
+
+Deno.test('pic refs: non-default sources round-trip through the deep link (#112)', () => {
+  _resetSources();
+  registerSource(fake('panoramax'));
+  registerSource(fake('mapillary'));
+  // Default source: bare id — every pre-#112 ?pic= link keeps working.
+  const uuid = '5914cdbb-36a9-4e91-8527-fbebcf96d8d4';
+  assertEquals(encodePicRef({ id: uuid, source: 'panoramax' }), uuid);
+  assertEquals(decodePicRef(uuid), { id: uuid, sourceId: undefined });
+  // Non-default source: prefixed, and decoded back to the owning adapter.
+  const enc = encodePicRef({ id: '854092095581010', source: 'mapillary' });
+  assertEquals(enc, 'mapillary:854092095581010');
+  assertEquals(decodePicRef(enc), { id: '854092095581010', sourceId: 'mapillary' });
+  // A prefix that is not a registered source stays part of the id.
+  assertEquals(decodePicRef('ghost:123'), { id: 'ghost:123', sourceId: undefined });
   _resetSources();
 });
 

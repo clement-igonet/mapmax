@@ -6,7 +6,7 @@ import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { panoramaxSource } from './panoramax.js';
 import { mapillarySource, mapillaryToken } from './mapillary.js';
-import { registerSource, addCoverage, onPictureClick, getPicture, isEditable, allSources, sourceOf, setSourceVisible } from './sources.js';
+import { registerSource, addCoverage, onPictureClick, getPicture, isEditable, allSources, sourceOf, setSourceVisible, encodePicRef, decodePicRef } from './sources.js';
 import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
@@ -128,7 +128,7 @@ let currentPic = null;
 onPictureChanged((pic) => {
   currentPic = pic;
   const ps = _photosphere();
-  if (pic) writePicToUrl(pic.id, ps?.yaw, ps?.pitch);
+  if (pic) writePicToUrl(encodePicRef(pic), ps?.yaw, ps?.pitch);
   else clearPicFromUrl();
 });
 // Update the saved look (yaw/pitch) as you drag / keyboard-look, debounced.
@@ -137,7 +137,7 @@ map.on('move', () => {
   if (!isStreetMode() || !currentPic) return;
   clearTimeout(urlSyncTimer);
   urlSyncTimer = setTimeout(() => {
-    if (isStreetMode() && currentPic) writePicToUrl(currentPic.id, _photosphere()?.yaw, _photosphere()?.pitch);
+    if (isStreetMode() && currentPic) writePicToUrl(encodePicRef(currentPic), _photosphere()?.yaw, _photosphere()?.pitch);
   }, 350);
 });
 // Restore an in-photosphere state from the URL once the map is ready.
@@ -145,7 +145,8 @@ map.on('load', async () => {
   const link = readPicFromUrl();
   if (!link) return;
   try {
-    const pic = await getPicture(link.id);
+    const ref = decodePicRef(link.id);
+    const pic = await getPicture(ref.id, ref.sourceId);
     if (!isEquirectangular(pic)) return; // only 360° panoramas enter the sphere
     status('Restoring 360° panorama…');
     await enterStreetView(map, pic);
@@ -223,14 +224,16 @@ if (typeof map.setMissingStyleImageResolver === 'function') {
   map.on('styleimagemissing', (e) => addPlaceholder(e.id));
 }
 
-onPictureClick(map, async (id) => {
+onPictureClick(map, async (id, _feature, src) => {
   status('Loading picture metadata…');
   const watchdog = setInterval(
     () => status('Still loading — street-level images can be large…'),
     8000
   );
   try {
-    const pic = await getPicture(id);
+    // Ask the adapter whose layer was clicked — a Mapillary id 400s on the
+    // Panoramax API (#112).
+    const pic = await getPicture(id, src?.id);
     // Flat (non-360) pictures can't be a photosphere — don't wrap them onto the
     // sphere. Show the original in a popup instead (#40). 360° panoramas enter.
     if (!isEquirectangular(pic)) {

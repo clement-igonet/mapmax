@@ -101,5 +101,20 @@ export function setSourceVisible(map, sourceId, visible) {
   }
 }
 
+// Deep-link picture references (#112): a non-default source prefixes its id —
+// "mapillary:854…" — so a shared/reloaded URL reopens through the owning
+// adapter instead of 400ing on the default one. Default-source ids stay bare
+// (every pre-#112 link keeps working).
+export function encodePicRef(pic) {
+  const d = defaultSource();
+  return pic?.source && d && pic.source !== d.id ? `${pic.source}:${pic.id}` : String(pic?.id ?? '');
+}
+
+export function decodePicRef(ref) {
+  const m = /^([a-z][a-z0-9_-]*):(.+)$/.exec(String(ref ?? ''));
+  if (m && getSourceById(m[1])) return { id: m[2], sourceId: m[1] };
+  return { id: String(ref ?? ''), sourceId: undefined };
+}
+
 // Test seam: wipe the registry (unit tests register fakes).
 export const _resetSources = () => registry.clear();
