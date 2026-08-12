@@ -5,6 +5,7 @@ import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, ST
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { panoramaxSource } from './panoramax.js';
+import { mapillarySource, mapillaryToken } from './mapillary.js';
 import { registerSource, addCoverage, onPictureClick, getPicture, isEditable } from './sources.js';
 import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
@@ -16,9 +17,11 @@ import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 import { setupLicenseGate } from './licensegate.js';
 
-// The sources this build browses (#112) — Panoramax is the backbone; further
-// adapters (Mapillary, Commons, self-hosted GeoVisio) register the same way.
+// The sources this build browses (#112) — Panoramax is the backbone (first
+// registered = default source for bare picture ids); Mapillary joins when a
+// client token is configured (config.js or ?mapillary_token=…).
 registerSource(panoramaxSource);
+if (mapillaryToken()) registerSource(mapillarySource);
 
 // On the sandbox host, require a Polar license key before revealing the app
 // (#76). No-op on www / localhost. Fire-and-forget: it mounts its own overlay.
