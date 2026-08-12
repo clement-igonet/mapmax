@@ -6,10 +6,11 @@ export const OSM_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 // Panoramax federated meta-catalog (STAC API + vector tiles).
 export const PANORAMAX_API = 'https://api.panoramax.xyz/api';
 
-// Mapillary client token (#112) — a PUBLIC client token (their model allows it
-// in front-end apps). Empty = the Mapillary source is not registered. Can also
-// be supplied at runtime with ?mapillary_token=… (persisted in localStorage).
-export const MAPILLARY_TOKEN = '';
+// Mapillary client token (#112) — the PUBLIC client token of the registered
+// "mapmax" app (their client-token model allows it in front-end code; it only
+// grants read access to public imagery). Empty would disable the source; a
+// runtime ?mapillary_token=… override persists in localStorage.
+export const MAPILLARY_TOKEN = 'MLY|26994806283526235|7b0ec1150c11b3779b8e96ba438264c8';
 
 // Initial view: central Paris, an area with dense Panoramax coverage.
 export const START_VIEW = {
