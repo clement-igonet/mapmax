@@ -4,7 +4,8 @@ import * as maplibregl from 'maplibre-gl';
 import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, STREET_DEFAULT_BLEND } from './config.js';
 import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
-import { addPanoramaxLayers, onPictureClick, getPicture } from './panoramax.js';
+import { panoramaxSource } from './panoramax.js';
+import { registerSource, addCoverage, onPictureClick, getPicture, isEditable } from './sources.js';
 import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
@@ -14,6 +15,10 @@ import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 import { setupLicenseGate } from './licensegate.js';
+
+// The sources this build browses (#112) — Panoramax is the backbone; further
+// adapters (Mapillary, Commons, self-hosted GeoVisio) register the same way.
+registerSource(panoramaxSource);
 
 // On the sandbox host, require a Polar license key before revealing the app
 // (#76). No-op on www / localhost. Fire-and-forget: it mounts its own overlay.
@@ -97,14 +102,18 @@ onPictureChanged(renderPicInfo);
 
 // Deep-link (#54): keep ?pic=<id>&pv=<yaw>_<pitch> in the URL so reloading or
 // sharing returns you to the same photosphere (and look direction) or the map.
-function revealStreetUI() {
+function revealStreetUI(pic) {
   document.getElementById('exit-street').hidden = false;
   document.getElementById('blend-control').hidden = false;
   document.getElementById('minimap').hidden = false;
-  // The header's Edit entry (#111) arms only inside a panorama.
+  // The header's Edit entry (#111) arms only inside a panorama, and only for
+  // sources whose corrections have somewhere to live (#112) — with Panoramax
+  // that is the browser's localStorage.
   const editMain = document.getElementById('edit-main');
-  editMain.disabled = false;
-  editMain.title = 'Fix this panorama\'s orientation and position — in your browser only';
+  editMain.disabled = !isEditable(pic);
+  editMain.title = editMain.disabled
+    ? 'This source is read-only — corrections are not available'
+    : 'Fix this panorama\'s orientation and position — in your browser only';
 }
 let currentPic = null;
 onPictureChanged((pic) => {
@@ -131,7 +140,7 @@ map.on('load', async () => {
     if (!isEquirectangular(pic)) return; // only 360° panoramas enter the sphere
     status('Restoring 360° panorama…');
     await enterStreetView(map, pic);
-    revealStreetUI();
+    revealStreetUI(pic);
     status('360° panorama — drag to look, click a ground arrow to walk, Esc to exit.');
     if (Number.isFinite(link.yaw)) {
       const ps = _photosphere();
@@ -152,7 +161,7 @@ map.on('load', async () => {
 
 map.on('style.load', () => {
   ensureBuildings3D();
-  addPanoramaxLayers(map);
+  addCoverage(map);
   status('Zoom in and click a Panoramax picture dot.');
 });
 
@@ -187,7 +196,7 @@ onPictureClick(map, async (id) => {
     }
     status('Loading image…');
     await enterStreetView(map, pic);
-    revealStreetUI();
+    revealStreetUI(pic);
     status('360° panorama — drag to look, click a ground arrow to walk, Esc to exit.');
   } catch (err) {
     console.error(err);

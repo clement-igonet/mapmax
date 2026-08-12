@@ -113,6 +113,7 @@ export function normalizeItem(f) {
     : 'flat';
   return {
     id: f.id,
+    source: 'panoramax',
     lon: f.geometry.coordinates[0],
     lat: f.geometry.coordinates[1],
     heading: p['view:azimuth'] ?? 0,
@@ -150,6 +151,20 @@ export async function getPicture(id) {
   if (!f) throw new Error(`Picture ${id} not found`);
   return normalizeItem(f);
 }
+
+// The source adapter (#112) — the interface documented in sources.js, backed
+// by the functions above (which stay exported for the unit tests).
+export const panoramaxSource = {
+  id: 'panoramax',
+  name: 'Panoramax',
+  capabilities: { editable: true, hdTiles: true, sequences: true },
+  addCoverage: addPanoramaxLayers,
+  onPictureClick,
+  getPicture,
+  searchNearby,
+  getSequence,
+  fetchTilesConfig,
+};
 
 // Pictures within `radiusM` meters around lon/lat (bbox approximation).
 export async function searchNearby(lon, lat, radiusM = 30, limit = 50) {

@@ -7,7 +7,7 @@ import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 import { consensusVerdict, sunYawVerdict } from './sunflip.js';
-import { fetchTilesConfig, getSequence } from './panoramax.js';
+import { fetchTilesConfig, getSequence } from './sources.js';
 import { POSE_STORE_KEY, POSITION_STORE_KEY, composePoseGesture, normalizeYaw, offsetLngLat } from './pose.js';
 
 export { pictureToTarget };
@@ -57,7 +57,7 @@ async function resolveYawOffset(pic) {
   let verdict = consensusVerdict(votes);
   if (verdict == null && pic.sequenceId) {
     try {
-      const seq = (await getSequence(pic.sequenceId, 120)).filter((p) => p.id !== pic.id && p.type === 'equirectangular');
+      const seq = (await getSequence(pic, 120)).filter((p) => p.id !== pic.id && p.type === 'equirectangular');
       const step = Math.max(1, Math.floor(seq.length / 10));
       for (let i = 0; i < seq.length && verdict == null; i += step) {
         votes.push(await sunYawVerdict(seq[i]));

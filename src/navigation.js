@@ -10,7 +10,7 @@
 import { chooseByHeading, pickArrows } from './arrows.js';
 import { STREET_POI_RADIUS_M } from './config.js';
 import { bearingBetween, distanceM, isDragGesture } from './geo.js';
-import { getPicture, searchNearby } from './panoramax.js';
+import { getPicture, searchNearby } from './sources.js';
 import { offsetLngLat } from './pose.js';
 import { _photosphere, currentPicture, enterStreetView, getCurrentPositionOffset, isStreetMode, onPictureChanged, onPositionChanged } from './streetview.js';
 
@@ -65,8 +65,14 @@ function effectiveEye(pic) {
   return { ...pic, lon, lat };
 }
 
+// Nav targets are carried as bare ids (shader POIs, arrow targets) — remember
+// which source each id came from so navigateTo() asks the right adapter (#112).
+const idSource = new Map();
+const recordSources = (pics) => { for (const p of pics) if (p.source) idSource.set(p.id, p.source); };
+
 async function refresh(map, pic) {
   const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
+  recordSources(candidates);
   // Only route to 360° panoramas (flat pictures can't be a photosphere yet, #40).
   navCache = { pic, pano: candidates.filter((c) => c.type === 'equirectangular') };
   rebuildNav();
@@ -110,7 +116,7 @@ function go(map, id) {
 }
 
 export async function navigateTo(map, pictureId) {
-  const pic = await getPicture(pictureId);
+  const pic = await getPicture(pictureId, idSource.get(pictureId));
   await enterStreetView(map, pic);
   return pic;
 }
@@ -121,6 +127,7 @@ export async function advance(map, headingDeg) {
   const pic = currentPicture();
   if (!pic) return null;
   const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
+  recordSources(candidates);
   const pano = candidates.filter((c) => c.type === 'equirectangular');
   const arrow = chooseByHeading(pickArrows(pic, pano), headingDeg);
   if (!arrow) return null;
