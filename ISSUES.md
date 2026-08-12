@@ -14,6 +14,8 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); branch-deploy flow still manual |
 | [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | [#116](https://github.com/clement-igonet/mapmax/pull/116) (draft) | **phases 1+2**: `src/sources.js` adapter registry (capability gating, cross-source searchNearby, read-only edit gate) + **Mapillary adapter** (Graph API v4, coverage tiles, sequences, `is_pano` 360s; registers only when a client token is set); "mapmax" app client token baked in config.js, all Graph API endpoints live-validated (incl. real 360s in Paris); next: Commons `Pano360` POI spheres; **branch on [sandbox](https://sandbox.mapmax.confinia.io) via CI dispatch (R14)**; UI reveal shipped (source legend chips, per-picture provenance, multi-source prompt) |
+| [#46](https://github.com/clement-igonet/mapmax/issues/46) | Flat pictures as located patches | [#118](https://github.com/clement-igonet/mapmax/pull/118) (draft, stacked on #116) | flat photos enter the photosphere as an equirect patch at their capture heading/FOV (pinhole vfov, hairline frame, neutral backdrop); popup kept as CORS/decode fallback; works for Panoramax and Mapillary flats |
+
 
 ## Backlog (open, not started)
 
@@ -25,7 +27,6 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 | [#86](https://github.com/clement-igonet/mapmax/issues/86) | Deep-link straight into the photosphere | |
 | [#83](https://github.com/clement-igonet/mapmax/issues/83) | Near façades vs fill-extrusion limits | |
 | [#58](https://github.com/clement-igonet/mapmax/issues/58) | Cap street-mode blend to a near-only source | more pressing since the 50/50 default (#101) |
-| [#46](https://github.com/clement-igonet/mapmax/issues/46) | Flat pictures as located patches | |
 
 ## Recently closed
 

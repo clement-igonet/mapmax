@@ -147,8 +147,7 @@ map.on('load', async () => {
   try {
     const ref = decodePicRef(link.id);
     const pic = await getPicture(ref.id, ref.sourceId);
-    if (!isEquirectangular(pic)) return; // only 360° panoramas enter the sphere
-    status('Restoring 360° panorama…');
+    status(isEquirectangular(pic) ? 'Restoring 360° panorama…' : 'Restoring photo…'); // flat enters as a patch too (#46)
     await enterStreetView(map, pic);
     revealStreetUI(pic);
     status('360° panorama — drag to look, click a ground arrow to walk, Esc to exit.');
@@ -234,11 +233,21 @@ onPictureClick(map, async (id, _feature, src) => {
     // Ask the adapter whose layer was clicked — a Mapillary id 400s on the
     // Panoramax API (#112).
     const pic = await getPicture(id, src?.id);
-    // Flat (non-360) pictures can't be a photosphere — don't wrap them onto the
-    // sphere. Show the original in a popup instead (#40). 360° panoramas enter.
+    // Flat (non-360) pictures enter the SAME photosphere, placed as a located
+    // patch at their capture heading and field of view (#46) — never stretched
+    // over the whole sphere (#40). The original-image popup remains the
+    // fallback when the image can't be textured (CORS, decode failure).
     if (!isEquirectangular(pic)) {
-      showFlatPicture(pic);
-      status('Flat photo (not a 360° panorama) — opened the original. Blue dots are 360°.');
+      try {
+        status('Loading image…');
+        await enterStreetView(map, pic);
+        revealStreetUI(pic);
+        status('Flat photo placed at its capture heading — drag to look around it, Esc to exit.');
+      } catch (err) {
+        console.warn('flat patch failed, falling back to the popup (#46)', err);
+        showFlatPicture(pic);
+        status('Flat photo — could not place it in the panorama; opened the original.');
+      }
       return;
     }
     status('Loading image…');
