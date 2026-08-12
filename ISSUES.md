@@ -18,7 +18,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Notes |
 |---|---|---|
-| [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | **in flight**: plugin [PR #4](https://github.com/clement-igonet/maplibre-gl-photosphere/pull/4) (0.4.0 editor API on the 0.3.0 HD-tiles base, 30 tests green, untagged); next: vendor 0.4.0 into MapMax + Panoramax `tiles` config; plan in [docs/UPSTREAMING.md](docs/UPSTREAMING.md) |
+| [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | **released & un-vendored**: maplibre-gl-photosphere **0.4.0 on npm** (viewer scope; gesture algebra in maplibre-gl-panoramax per the 2026-08-11 layering); PR #114 replaces the fork with VERBATIM release files (photosphere trio = npm 0.4.0 tarball; gesture/edit from maplibre-gl-panoramax@main, pin on its 0.2.0 release) + VENDOR.md provenance; 113/113 unit, full e2e green (R12) |
 | [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | survey in [SOURCES.md](SOURCES.md); adapter interface first; editing stays Panoramax/GeoVisio-only |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
