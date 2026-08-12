@@ -116,5 +116,12 @@ export function decodePicRef(ref) {
   return { id: String(ref ?? ''), sourceId: undefined };
 }
 
+// Map source ids of every registered source's coverage (convention: an
+// adapter's map source is named after its adapter id). Street mode keeps ALL
+// of these suspended (#27): far dots would bleed through the blend as fake
+// clickable targets at the horizon — nearby 360°s are re-injected as real
+// in-sphere ground dots instead, whatever their source.
+export const coverageSources = () => allSources().map((s) => s.id);
+
 // Test seam: wipe the registry (unit tests register fakes).
 export const _resetSources = () => registry.clear();

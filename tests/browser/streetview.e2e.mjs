@@ -274,8 +274,12 @@ const nav = await page.evaluate(async () => {
   const { sliderToBlend } = await import('./src/target.js');
   // Building extrusions are gated to z18 (#82); their blend visibility depends on
   // zoom, so exclude them from the "blend reveals OSM" count to keep it stable.
-  const panoramaxTiled = tiled.filter((id) => tiledLayerIds(map.getStyle()).includes(id) && !tiledLayerIds(map.getStyle(), ['panoramax']).includes(id));
-  const osmTiled = tiledLayerIds(map.getStyle(), ['panoramax']).filter((id) => map.getLayer(id)?.type !== 'fill-extrusion');
+  // Every registered imagery source's coverage stays suspended in street mode
+  // (#27/#112) — Panoramax, Mapillary, whatever registers next.
+  const { coverageSources } = await import('./src/sources.js');
+  const covered = coverageSources();
+  const panoramaxTiled = tiled.filter((id) => tiledLayerIds(map.getStyle()).includes(id) && !tiledLayerIds(map.getStyle(), covered).includes(id));
+  const osmTiled = tiledLayerIds(map.getStyle(), covered).filter((id) => map.getLayer(id)?.type !== 'fill-extrusion');
   // #101: entry defaults to a 50/50 mix — captured BEFORE the e2e touches the
   // blend: photo opacity 0.5, slider at 50, OSM already revealed (hiddenInside
   // above therefore counts only the suspended Panoramax tiles).
@@ -335,13 +339,13 @@ if (nav.skipped) {
   // #101: at the 50/50 entry default the OSM layers are already revealed; only
   // the Panoramax tiles stay suspended (#27). The full #11 suspension is
   // asserted at blend 100% below (hiddenBackToPhoto).
-  assert.equal(nav.hiddenInside, nav.panoramaxTiledCount, `at the 50/50 default only Panoramax tiles stay suspended (#101/#27): ${nav.hiddenInside}/${nav.panoramaxTiledCount}`);
+  assert.equal(nav.hiddenInside, nav.panoramaxTiledCount, `at the 50/50 default only imagery-source tiles stay suspended (#101/#27/#112): ${nav.hiddenInside}/${nav.panoramaxTiledCount}`);
   assert.equal(nav.defaultBlend, 0.5, `entry must default to a 50/50 mix, got blend ${nav.defaultBlend} (#101)`);
   assert.equal(nav.defaultSlider, '50', `blend slider must read 50 on entry, got ${nav.defaultSlider} (#101)`);
   assert.equal(nav.visibleAfter, nav.tiledCount, 'tiled layers not restored after exit (#11)');
   assert.equal(nav.osmVisibleAtMixed, nav.osmTiledCount, `blend 50% did not reveal OSM vector layers (#6)`);
-  assert.ok(nav.panoramaxTiledCount > 0, 'expected Panoramax tiled layers');
-  assert.equal(nav.panoramaxHiddenAtMixed, nav.panoramaxTiledCount, `Panoramax tiles must stay suspended in blend — far POIs must not load (#27)`);
+  assert.ok(nav.panoramaxTiledCount > 0, 'expected imagery-source tiled layers');
+  assert.equal(nav.panoramaxHiddenAtMixed, nav.panoramaxTiledCount, `imagery-source tiles must stay suspended in blend — far dots must not bleed through (#27/#112)`);
   assert.equal(nav.hiddenBackToPhoto, nav.tiledCount, `blend 100% did not re-suspend tiles (#6)`);
   assert.equal(nav.blendInside, 1, 'blend 100% should set photo opacity to 1 (#6)');
   assert.ok(nav.yawChanged, 'keyboard look did not change yaw (#7)');
