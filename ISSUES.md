@@ -18,7 +18,6 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Notes |
 |---|---|---|
-| [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | **released & un-vendored**: maplibre-gl-photosphere **0.4.0 on npm** (viewer scope; gesture algebra in maplibre-gl-panoramax per the 2026-08-11 layering); PR #114 replaces the fork with VERBATIM release files (photosphere trio = npm 0.4.0 tarball; gesture/edit from maplibre-gl-panoramax@main, pin on its 0.2.0 release) + VENDOR.md provenance; 113/113 unit, full e2e green (R12) |
 | [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | survey in [SOURCES.md](SOURCES.md); adapter interface first; editing stays Panoramax/GeoVisio-only |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
@@ -32,6 +31,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Resolution |
 |---|---|---|
+| [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | [maplibre-gl-photosphere v0.4.0](https://github.com/clement-igonet/maplibre-gl-photosphere/releases/tag/v0.4.0) released canonically (bump PR → npm + tag + GH Release, [PR #114](https://github.com/clement-igonet/mapmax/pull/114) un-forks MapMax onto the verbatim release files + VENDOR.md); gesture/edit vendored from [maplibre-gl-panoramax](https://github.com/clement-igonet/maplibre-gl-panoramax)@main (repo at 0.1.0, 0.2.0 staged under `## main`, npm bootstrap pending user token); closed 2026-08-12 |
 | [#111](https://github.com/clement-igonet/mapmax/issues/111) | Reader chrome + product pivot: READ-oriented, local-only 🔧 Adjust | [#113](https://github.com/clement-igonet/mapmax/pull/113) merged (true-merge of the #108→#109→#113 train); auth/write-back removed app-wide (lives on in maplibre-gl-panoramax); deployed & verified all envs; closed 2026-08-11 |
 | [#107](https://github.com/clement-igonet/mapmax/issues/107) | Position edit: compass pad + elevation scale + ground/minimap drag (local) | via [#109](https://github.com/clement-igonet/mapmax/pull/109) in the #113 train; world-anchored nav dots; closed 2026-08-11 |
 | [#106](https://github.com/clement-igonet/mapmax/issues/106) | Pose edit mode: drag the photo + roll ring | via [#108](https://github.com/clement-igonet/mapmax/pull/108) in the #113 train; gesture maths graduated to the plugin stack (#110); closed 2026-08-11 |
