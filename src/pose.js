@@ -8,20 +8,23 @@
 // localStorage only. Server write-back deliberately lives outside the app, in
 // the maplibre-gl-panoramax package.
 
-// The viewer maths (pose matrix, gesture composition, Euler extraction) live
-// in the photosphere plugin since its 0.4.0 (#110) — re-exported here so app
-// modules and tests keep a single import site. This file keeps what is
-// PANORAMAX-specific: PATCH builders, home-instance resolution, exif pose,
-// storage keys, geo offsets.
+// The maths is vendored from the released packages, split per the layering
+// rule (#110): RENDERING pose maths from maplibre-gl-photosphere 0.4.0
+// (viewers render), the pose-EDITOR gesture algebra from maplibre-gl-panoramax
+// (editing lives next to the data source). Re-exported here so app modules and
+// tests keep a single import site. This file keeps what is MapMax-specific:
+// home-instance resolution, exif pose, storage keys, geo offsets.
+export {
+  normalizeYaw,
+  panoPoseMatrix,
+  poseTransform,
+} from './vendor/photosphere/pose.js';
 export {
   axisRotationMatrix,
   composePoseGesture,
   mat3Multiply,
-  normalizeYaw,
-  panoPoseMatrix,
   poseFromMatrix,
-  poseTransform,
-} from './vendor/photosphere/pose.js';
+} from './vendor/panoramax/gesture.js';
 import { normalizeYaw } from './vendor/photosphere/pose.js';
 
 const clampDeg = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

@@ -35,6 +35,12 @@ Deno.test('deployed JS modules are served', async () => {
     assertEquals(plugin.status, 200, `vendored photosphere ${f}.js not deployed`);
     await plugin.body?.cancel();
   }
+  // The vendored maplibre-gl-panoramax gesture algebra + its shim (#110).
+  for (const f of ['gesture', 'edit']) {
+    const plugin = await fetch(`${BASE}/src/vendor/panoramax/${f}.js`);
+    assertEquals(plugin.status, 200, `vendored panoramax ${f}.js not deployed`);
+    await plugin.body?.cancel();
+  }
   // Vendored MapLibre build (PR #7932) + its shared chunk and module worker.
   for (const f of ['maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl-worker.mjs', 'maplibre-gl.css']) {
     const res = await fetch(`${BASE}/vendor/maplibre/${f}`);
