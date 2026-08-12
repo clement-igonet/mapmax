@@ -25,13 +25,22 @@ const status = (msg) => {
 
 // The style is hardened BEFORE map creation so not a single frame renders
 // raw null-able expressions (#14 — verified by the containerized Chromium e2e).
+// The fetch retries: a single transient failure would otherwise fall back to
+// the RAW style URL for the whole session — MapLibre's own fetch then succeeds
+// and every null-able filter warns on evaluation (seen once in CI when the
+// upstream style had just been republished).
 async function loadHardenedStyle() {
-  try {
-    const style = await (await fetch(OSM_STYLE_URL)).json();
-    return hardenStyle(style);
-  } catch (err) {
-    console.warn('style hardening failed, using raw style', err);
-    return OSM_STYLE_URL;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const style = await (await fetch(OSM_STYLE_URL)).json();
+      return hardenStyle(style);
+    } catch (err) {
+      if (attempt >= 3) {
+        console.warn('style hardening failed, using raw style', err);
+        return OSM_STYLE_URL;
+      }
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
   }
 }
 
