@@ -8,6 +8,10 @@
 name: Deploy to confinia
 
 on:
+  # R14: branch validation deploys go through CI/CD too — dispatch this
+  # workflow on ANY ref ("Run workflow" → pick the branch). Non-main refs
+  # deploy ONLY the sandbox image: www/staging can never serve a branch.
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -40,4 +44,7 @@ jobs:
         run: bash scripts/ci-test.sh
 
       - name: Promote to confinia + health check
+        env:
+          # main → full www/staging/sandbox promote; any other ref → sandbox only.
+          DEPLOY_TARGET: ${{ github.ref_name == 'main' && 'all' || 'sandbox' }}
         run: bash scripts/deploy-confinia.sh
