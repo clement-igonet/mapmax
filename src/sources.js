@@ -91,5 +91,15 @@ export async function fetchTilesConfig(pic) {
 // when the owning adapter says so.
 export const isEditable = (pic) => sourceOf(pic)?.capabilities?.editable === true;
 
+// Show/hide one source's coverage layers (the HUD legend chips). Adapters
+// declare their layer ids in `layers`; unknown sources/layers are no-ops.
+export function setSourceVisible(map, sourceId, visible) {
+  for (const layer of getSourceById(sourceId)?.layers || []) {
+    if (map.getLayer(layer)) {
+      map.setLayoutProperty(layer, 'visibility', visible ? 'visible' : 'none');
+    }
+  }
+}
+
 // Test seam: wipe the registry (unit tests register fakes).
 export const _resetSources = () => registry.clear();

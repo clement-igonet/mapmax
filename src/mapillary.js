@@ -189,6 +189,8 @@ export function onPictureClick(map, handler) {
 export const mapillarySource = {
   id: 'mapillary',
   name: 'Mapillary',
+  color: '#05cb63',
+  layers: [SEQUENCES_LAYER, PICTURES_LAYER],
   capabilities: { editable: false, hdTiles: false, sequences: true },
   addCoverage: addMapillaryLayers,
   onPictureClick,

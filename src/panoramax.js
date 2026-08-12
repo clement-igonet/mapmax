@@ -157,6 +157,8 @@ export async function getPicture(id) {
 export const panoramaxSource = {
   id: 'panoramax',
   name: 'Panoramax',
+  color: '#ff6f00',
+  layers: [SEQUENCES_LAYER, PICTURES_LAYER],
   capabilities: { editable: true, hdTiles: true, sequences: true },
   addCoverage: addPanoramaxLayers,
   onPictureClick,

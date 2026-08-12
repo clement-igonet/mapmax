@@ -6,7 +6,7 @@ import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { panoramaxSource } from './panoramax.js';
 import { mapillarySource, mapillaryToken } from './mapillary.js';
-import { registerSource, addCoverage, onPictureClick, getPicture, isEditable } from './sources.js';
+import { registerSource, addCoverage, onPictureClick, getPicture, isEditable, allSources, sourceOf, setSourceVisible } from './sources.js';
 import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
@@ -86,9 +86,15 @@ function renderPicInfo(pic) {
   const badge = document.createElement('span');
   badge.className = `pic-badge ${isEquirectangular(pic) ? 'is-360' : 'is-flat'}`;
   badge.textContent = picBadge(pic);
+  // Source + license make the multi-source reality visible per picture (#112):
+  // "360° · Mapillary · CC-BY-SA-4.0 · by …".
+  const src = sourceOf(pic);
+  const provenance = [src?.name, pic.license].filter(Boolean).join(' · ');
   picInfo.append(
     badge,
-    document.createTextNode(` id ${pic.id}${pic.producer ? ` · by ${pic.producer}` : ''} · `)
+    document.createTextNode(
+      `${provenance ? ` ${provenance} ·` : ''} id ${pic.id}${pic.producer ? ` · by ${pic.producer}` : ''} · `
+    )
   );
   const url = originalImageUrl(pic);
   if (url) {
@@ -162,10 +168,45 @@ map.on('load', async () => {
   }
 });
 
+// The browse prompt names every registered source — the map is not
+// Panoramax-only anymore (#112).
+const browsePrompt = () =>
+  `Zoom in and click a picture dot (${allSources().map((s) => s.name).join(' + ')}).`;
+
+// Source legend (#112): one chip per registered source, colored like its dots;
+// click toggles that source's coverage. Small OPAQUE chips, no transitions —
+// large translucent/promoted surfaces over WebGL rasterize unreliably (#100).
+const sourceShown = new Map();
+function buildSourceLegend() {
+  const legend = document.getElementById('source-legend');
+  legend.replaceChildren();
+  for (const s of allSources()) {
+    sourceShown.set(s.id, sourceShown.get(s.id) ?? true);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'source-chip';
+    chip.textContent = s.name;
+    chip.style.borderLeftColor = s.color || '#888';
+    chip.title = `Show/hide ${s.name} coverage`;
+    chip.classList.toggle('chip-off', !sourceShown.get(s.id));
+    chip.addEventListener('click', () => {
+      const on = !sourceShown.get(s.id);
+      sourceShown.set(s.id, on);
+      setSourceVisible(map, s.id, on);
+      chip.classList.toggle('chip-off', !on);
+    });
+    legend.append(chip);
+  }
+}
+buildSourceLegend();
+
 map.on('style.load', () => {
   ensureBuildings3D();
   addCoverage(map);
-  status('Zoom in and click a Panoramax picture dot.');
+  // A style reload re-adds coverage with default visibility — reapply the
+  // legend's toggles so a hidden source stays hidden.
+  for (const [id, on] of sourceShown) if (!on) setSourceVisible(map, id, false);
+  status(browsePrompt());
 });
 
 // Sprite icons referenced by the style but absent from its sprite sheet would
@@ -247,7 +288,7 @@ const leaveStreetUI = () => {
   // Back to the 50/50 default for the next entry (#101) — streetview.js resets
   // its remembered blend on exit to match.
   blendSlider.value = String(STREET_DEFAULT_BLEND * 100);
-  status('Zoom in and click a Panoramax picture dot.');
+  status(browsePrompt());
 };
 // EVERY exit path (✕ Map, Esc, plugin-internal exits) reports pic = null —
 // hide the street controls from this one place so none can leave the pose

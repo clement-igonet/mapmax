@@ -12,6 +12,7 @@ import {
   isEditable,
   registerSource,
   searchNearby,
+  setSourceVisible,
   sourceOf,
 } from '../../src/sources.js';
 import { normalizeItem, panoramaxSource } from '../../src/panoramax.js';
@@ -97,6 +98,26 @@ Deno.test('isEditable: only when the owning adapter opts in (#112 read-only gate
   assert(!isEditable({ source: 'ghost' }));
   _resetSources();
   assert(!isEditable({ source: 'anything' })); // empty registry: never editable
+});
+
+Deno.test('setSourceVisible: toggles only the declared layers that exist', () => {
+  _resetSources();
+  registerSource(fake('cov', { layers: ['cov-lines', 'cov-dots', 'cov-ghost'] }));
+  registerSource(fake('bare')); // no layers declared — a no-op
+  const calls = [];
+  const map = {
+    getLayer: (id) => id !== 'cov-ghost',
+    setLayoutProperty: (id, prop, v) => calls.push([id, prop, v]),
+  };
+  setSourceVisible(map, 'cov', false);
+  assertEquals(calls, [['cov-lines', 'visibility', 'none'], ['cov-dots', 'visibility', 'none']]);
+  calls.length = 0;
+  setSourceVisible(map, 'cov', true);
+  assertEquals(calls, [['cov-lines', 'visibility', 'visible'], ['cov-dots', 'visibility', 'visible']]);
+  setSourceVisible(map, 'bare', false);
+  setSourceVisible(map, 'unknown', false);
+  assertEquals(calls.length, 2); // nothing further
+  _resetSources();
 });
 
 Deno.test('panoramaxSource: satisfies the contract; pictures carry source', () => {

@@ -91,6 +91,8 @@ Deno.test('mapillarySource: satisfies the registry contract, read-only', () => {
   _resetSources();
   registerSource(mapillarySource); // throws if the contract is not met
   assertEquals(mapillarySource.capabilities, { editable: false, hdTiles: false, sequences: true });
+  assertEquals(mapillarySource.layers.length, 2); // legend toggle targets (#112)
+  assert(mapillarySource.color); // legend chip color, distinct from Panoramax
   const pic = normalizeImage(panoNode);
   assertEquals(sourceOf(pic).id, 'mapillary');
   assert(!isEditable(pic)); // 🔧 Adjust stays disarmed on Mapillary pictures
