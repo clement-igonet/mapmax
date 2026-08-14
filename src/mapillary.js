@@ -190,6 +190,8 @@ export const mapillarySource = {
   id: 'mapillary',
   name: 'Mapillary',
   color: '#05cb63',
+  // Same palette as the map dots: teal 360°s, green flats.
+  dotColors: { equirectangular: '#00838f', flat: '#05cb63' },
   layers: [SEQUENCES_LAYER, PICTURES_LAYER],
   capabilities: { editable: false, hdTiles: false, sequences: true },
   addCoverage: addMapillaryLayers,
