@@ -5,12 +5,14 @@ import {
   _resetSources,
   allSources,
   decodePicRef,
+  dotColor,
   defaultSource,
   encodePicRef,
   fetchTilesConfig,
   getPicture,
   getSequence,
   getSourceById,
+  hexToRgb01,
   isEditable,
   registerSource,
   searchNearby,
@@ -119,6 +121,19 @@ Deno.test('setSourceVisible: toggles only the declared layers that exist', () =>
   setSourceVisible(map, 'bare', false);
   setSourceVisible(map, 'unknown', false);
   assertEquals(calls.length, 2); // nothing further
+  _resetSources();
+});
+
+Deno.test('dotColor: the map palette follows pictures into the sphere (#112)', () => {
+  _resetSources();
+  registerSource(fake('painted', { dotColors: { equirectangular: '#00838f', flat: '#05cb63' } }));
+  registerSource(fake('plain'));
+  const rgb = dotColor({ source: 'painted', type: 'equirectangular' });
+  assert(Math.abs(rgb[0] - 0) < 1e-9 && Math.abs(rgb[1] - 0x83 / 255) < 1e-9 && Math.abs(rgb[2] - 0x8f / 255) < 1e-9);
+  assertEquals(dotColor({ source: 'painted', type: 'flat' }), hexToRgb01('#05cb63'));
+  assertEquals(dotColor({ source: 'plain', type: 'equirectangular' }), [0.16, 0.4, 1.0]); // viewer default
+  assertEquals(hexToRgb01('nope'), null);
+  assertEquals(hexToRgb01('#ffffff'), [1, 1, 1]);
   _resetSources();
 });
 

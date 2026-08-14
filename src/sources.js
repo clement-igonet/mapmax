@@ -123,5 +123,21 @@ export function decodePicRef(ref) {
 // in-sphere ground dots instead, whatever their source.
 export const coverageSources = () => allSources().map((s) => s.id);
 
+// '#rrggbb' → [r, g, b] in 0..1 (the viewer's per-dot color format).
+export function hexToRgb01(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+// Immersive floor-dot color for a picture — the SAME color language as the
+// map layers (#112): the owning adapter declares `dotColors` per type
+// ('equirectangular' / 'flat', hex). Fallback: the viewer's historical blue.
+export function dotColor(pic) {
+  const kind = pic?.type === 'equirectangular' ? 'equirectangular' : 'flat';
+  return hexToRgb01(sourceOf(pic)?.dotColors?.[kind]) || [0.16, 0.4, 1.0];
+}
+
 // Test seam: wipe the registry (unit tests register fakes).
 export const _resetSources = () => registry.clear();

@@ -10,7 +10,7 @@
 import { chooseByHeading, pickArrows } from './arrows.js';
 import { STREET_POI_RADIUS_M } from './config.js';
 import { bearingBetween, distanceM, isDragGesture } from './geo.js';
-import { getPicture, searchNearby } from './sources.js';
+import { dotColor, getPicture, searchNearby } from './sources.js';
 import { offsetLngLat } from './pose.js';
 import { _photosphere, currentPicture, enterStreetView, getCurrentPositionOffset, isStreetMode, onPictureChanged, onPositionChanged } from './streetview.js';
 
@@ -87,11 +87,13 @@ function rebuildNav() {
   // report equal to the count we render, and the floor uncluttered).
   pois = pano
     .filter((c) => c.id !== pic.id)
-    .map((c) => ({ ...groundOffset(eye, c), dist: distanceM(eye.lon, eye.lat, c.lon, c.lat) }))
+    // Dots keep the map's color language in the sphere (#112): per-source,
+    // per-type colors from the owning adapter.
+    .map((c) => ({ ...groundOffset(eye, c), dist: distanceM(eye.lon, eye.lat, c.lon, c.lat), color: dotColor(c) }))
     .filter((p) => p.dist <= STREET_POI_RADIUS_M)
     .sort((a, b) => a.dist - b.dist)
     .slice(0, MAX_POIS)
-    .map(({ east, north, id }) => ({ east, north, id }));
+    .map(({ east, north, id, color }) => ({ east, north, id, color }));
   const ps = _photosphere();
   ps?.setNavArrows?.(arrows.map((a) => ({ bearing: a.bearing, id: a.targetId })));
   ps?.setNavPois?.(pois);

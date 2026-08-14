@@ -158,6 +158,8 @@ export const panoramaxSource = {
   id: 'panoramax',
   name: 'Panoramax',
   color: '#ff6f00',
+  // Same palette as the map dots: blue 360°s, orange flats.
+  dotColors: { equirectangular: '#2962ff', flat: '#ff6f00' },
   layers: [SEQUENCES_LAYER, PICTURES_LAYER],
   capabilities: { editable: true, hdTiles: true, sequences: true },
   addCoverage: addPanoramaxLayers,
