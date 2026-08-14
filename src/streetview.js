@@ -7,7 +7,7 @@ import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 import { consensusVerdict, sunYawVerdict } from './sunflip.js';
-import { fetchTilesConfig, getSequence } from './panoramax.js';
+import { coverageSources, fetchTilesConfig, getSequence } from './sources.js';
 import { POSE_STORE_KEY, POSITION_STORE_KEY, composePoseGesture, normalizeYaw, offsetLngLat } from './pose.js';
 
 export { pictureToTarget };
@@ -57,7 +57,7 @@ async function resolveYawOffset(pic) {
   let verdict = consensusVerdict(votes);
   if (verdict == null && pic.sequenceId) {
     try {
-      const seq = (await getSequence(pic.sequenceId, 120)).filter((p) => p.id !== pic.id && p.type === 'equirectangular');
+      const seq = (await getSequence(pic, 120)).filter((p) => p.id !== pic.id && p.type === 'equirectangular');
       const step = Math.max(1, Math.floor(seq.length / 10));
       for (let i = 0; i < seq.length && verdict == null; i += step) {
         votes.push(await sunYawVerdict(seq[i]));
@@ -354,9 +354,10 @@ export function setBlend(alpha) {
   if (!photosphere || !svMap) return;
   photosphere.blend(alpha);
   if (alpha >= 0.99) suspendTileLayers(svMap);
-  // Reveal OSM for mixing, but keep Panoramax tiles suspended so far POIs never
-  // load in street mode — nearby ones show via the bounded GeoJSON (#27).
-  else resumeTileLayers(svMap, ['panoramax']);
+  // Reveal OSM for mixing, but keep EVERY imagery source's coverage suspended
+  // (#27/#112): far dots would bleed through the blend as fake clickable
+  // targets at the horizon — nearby 360°s show as real in-sphere ground dots.
+  else resumeTileLayers(svMap, coverageSources());
 }
 
 export function exitStreetView() {

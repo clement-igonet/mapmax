@@ -13,12 +13,12 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 | [#103](https://github.com/clement-igonet/mapmax/issues/103) | Adopt stock MapLibre ≥ v6.20 (with #8057) on all envs | — | promotion path decided; **blocked upstream** (latest v6.1.0, [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) open) |
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); **branch→sandbox deploys now CI-driven** ([#117](https://github.com/clement-igonet/mapmax/pull/117), R14: `workflow_dispatch` on any ref, sandbox-only off main) |
+| [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | [#116](https://github.com/clement-igonet/mapmax/pull/116) | **phases 1+2**: `src/sources.js` adapter registry (capability gating, cross-source searchNearby, read-only edit gate) + **Mapillary adapter** (Graph API v4, coverage tiles, sequences, `is_pano` 360s); "mapmax" app client token baked in config.js, all endpoints live-validated; UI reveal (source legend chips, per-picture provenance, multi-source prompt); per-source floor-dot colors (plugin setNavPois color, upstreamed); next: Commons `Pano360` POI spheres |
 
 ## Backlog (open, not started)
 
 | Issue | Title | Notes |
 |---|---|---|
-| [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | survey in [SOURCES.md](SOURCES.md); adapter interface first; editing stays Panoramax/GeoVisio-only |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
 | [#87](https://github.com/clement-igonet/mapmax/issues/87) | Position-only tile/LOD (app-level) | app-side mitigations shipped (#87 gate pin, #95 clip); full fix tracked upstream via #94 |
