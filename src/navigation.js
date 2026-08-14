@@ -73,19 +73,26 @@ const recordSources = (pics) => { for (const p of pics) if (p.source) idSource.s
 async function refresh(map, pic) {
   const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
   recordSources(candidates);
-  // Only route to 360° panoramas (flat pictures can't be a photosphere yet, #40).
-  navCache = { pic, pano: candidates.filter((c) => c.type === 'equirectangular') };
+  navCache = {
+    pic,
+    // Walk ARROWS stay 360°-to-360° (sequence stepping)…
+    pano: candidates.filter((c) => c.type === 'equirectangular'),
+    // …but since #46 every picture is enterable (flats become located
+    // patches), they ALL get a floor dot — colored per source/type (#112).
+    targets: candidates,
+  };
   rebuildNav();
 }
 
 function rebuildNav() {
   if (!navCache) return;
-  const { pic, pano } = navCache;
+  const { pic, pano, targets = pano } = navCache;
   const eye = effectiveEye(pic);
   arrows = pickArrows(eye, pano).map((a) => ({ bearing: a.bearing, targetId: a.targetId }));
   // Nearest neighbours first, capped to the shader's MAX_POIS (keeps the count we
-  // report equal to the count we render, and the floor uncluttered).
-  pois = pano
+  // report equal to the count we render, and the floor uncluttered). Since #46
+  // flats are targets too — their dots wear the flat colors (orange/green).
+  pois = targets
     .filter((c) => c.id !== pic.id)
     // Dots keep the map's color language in the sphere (#112): per-source,
     // per-type colors from the owning adapter.
