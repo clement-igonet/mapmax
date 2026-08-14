@@ -114,3 +114,20 @@ Deno.test('arrowsToGeoJSON emits clickable ground polygons', () => {
   assertEquals(fc.features[0].properties.targetId, 't');
   assertEquals(typeof fc.features[0].properties.bearing, 'number');
 });
+
+Deno.test('fairMixBySource: a dense source cannot crowd out the others (#112)', async () => {
+  const { fairMixBySource } = await import('../../src/arrows.js');
+  // 20 close 'a' dots, 3 far 'b' dots — pure nearest-12 would show zero 'b'.
+  const items = [
+    ...Array.from({ length: 20 }, (_, i) => ({ id: `a${i}`, source: 'a', dist: i + 1 })),
+    ...Array.from({ length: 3 }, (_, i) => ({ id: `b${i}`, source: 'b', dist: 40 + i })),
+  ];
+  const mix = fairMixBySource(items, 12);
+  const bs = mix.filter((p) => p.source === 'b');
+  if (bs.length !== 3) throw new Error(`expected the 3 'b' dots reserved, got ${bs.length}`);
+  if (mix.length !== 12) throw new Error(`cap not honored: ${mix.length}`);
+  for (let i = 1; i < mix.length; i++) if (mix[i].dist < mix[i - 1].dist) throw new Error('not nearest-first');
+  // Single source: behaves exactly like nearest-N.
+  const solo = fairMixBySource(items.filter((p) => p.source === 'a'), 5);
+  if (solo.map((p) => p.id).join() !== 'a0,a1,a2,a3,a4') throw new Error('single-source order broken');
+});

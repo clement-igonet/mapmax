@@ -2,6 +2,7 @@
 // One Photosphere instance is reused for the whole session: enter() steps into
 // a clicked picture, goTo() walks to an adjacent one (SPECIFICATIONS.md §2.2–2.5).
 import { Photosphere } from './vendor/photosphere/index.js';
+import { flatPictureTexture } from './flatpatch.js';
 import { PHOTOSPHERE, MAP_MAX_PITCH, STREET_MAX_PITCH, STREET_DEFAULT_BLEND } from './config.js';
 import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
@@ -270,14 +271,29 @@ export function setPoseEditMode(on, onChange) {
   return poseEditOn;
 }
 
+// The photosphere target for a picture: 360°s pass through; flat pictures are
+// painted onto an equirect canvas as a located patch first (#46). Throws when
+// the flat image can't be textured — callers keep the popup fallback (#40).
+async function buildTarget(pic, preferHd) {
+  const t = pictureToTarget(pic, preferHd);
+  if (pic.type !== 'equirectangular') {
+    t.imageUrl = await flatPictureTexture(t.imageUrl, pic.hfov);
+    t.tiles = null; // no HD refinement over a synthesized texture
+  }
+  return t;
+}
+
 // Enter street view at `pic` (first click) or walk to it (already inside).
 export async function enterStreetView(map, pic) {
   flushPoseSave(); // a still-pending pose write must land before we read the store (#98)
   // /search results lack the tiled-HD fields — recover them in parallel with
   // the sun-compass resolution so HD refinement works on every entry path.
+  // (Flat pictures skip the tiles fetch: the patch never refines.)
   const [yawOffset, tiles] = await Promise.all([
     resolveYawOffset(pic),
-    pic.tiles ? Promise.resolve(pic.tiles) : fetchTilesConfig(pic).catch(() => null),
+    pic.tiles ? Promise.resolve(pic.tiles)
+      : pic.type === 'equirectangular' ? fetchTilesConfig(pic).catch(() => null)
+      : Promise.resolve(null),
   ]);
   pic.yawOffset = yawOffset;
   pic.tiles = tiles;
@@ -288,8 +304,10 @@ export async function enterStreetView(map, pic) {
   current = pic;
   svMap = map;
 
+  const target = await buildTarget(pic, photosphere?.mode !== 'inside'); // #46
+
   if (!photosphere) {
-    const entry = pictureToTarget(pic, true);
+    const entry = target;
     photosphere = new Photosphere(map, {
       ...PHOTOSPHERE,
       lngLat: entry.lngLat,
@@ -337,9 +355,9 @@ export async function enterStreetView(map, pic) {
   try { map.setMaxPitch(STREET_MAX_PITCH); } catch { /* ignore */ }
 
   if (photosphere.mode === 'inside') {
-    photosphere.goTo(pictureToTarget(pic));
+    photosphere.goTo(target);
   } else if (photosphere.mode === 'outside') {
-    photosphere.enter(pictureToTarget(pic, true));
+    photosphere.enter(target);
   }
   emit(pic);
   return pic;

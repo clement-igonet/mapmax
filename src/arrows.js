@@ -90,6 +90,28 @@ export function pickArrows(current, candidates, options = {}) {
 // The arrow whose direction best matches `headingDeg` (the way the user is
 // looking), within `maxDiff` degrees — used to "advance" with the keyboard or
 // double-click (SPECIFICATIONS.md §2.5). Returns null when nothing lies ahead.
+// Fair per-source dot selection (#112): `items` sorted nearest-first, each
+// carrying a `source`. A dense source (Panoramax in a French city centre)
+// would otherwise claim every one of the `cap` slots and the other sources'
+// dots would never appear. Reserve the nearest `perSource` of EACH source,
+// fill the rest by pure distance, return nearest-first.
+export function fairMixBySource(items, cap, perSource = 3) {
+  const chosen = new Map(); // id -> item (insertion keeps stable identity)
+  for (const src of new Set(items.map((p) => p.source))) {
+    let n = 0;
+    for (const p of items) {
+      if (p.source !== src || n >= perSource) continue;
+      chosen.set(p.id, p);
+      n++;
+    }
+  }
+  for (const p of items) {
+    if (chosen.size >= cap) break;
+    chosen.set(p.id, p);
+  }
+  return [...chosen.values()].sort((a, b) => (a.dist ?? 0) - (b.dist ?? 0)).slice(0, cap);
+}
+
 export function chooseByHeading(arrows, headingDeg, maxDiff = 55) {
   let best = null;
   let bestDiff = Infinity;

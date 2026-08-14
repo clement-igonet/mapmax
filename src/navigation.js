@@ -73,26 +73,35 @@ const recordSources = (pics) => { for (const p of pics) if (p.source) idSource.s
 async function refresh(map, pic) {
   const candidates = await searchNearby(pic.lon, pic.lat, STREET_POI_RADIUS_M, 60);
   recordSources(candidates);
-  // Only route to 360° panoramas (flat pictures can't be a photosphere yet, #40).
-  navCache = { pic, pano: candidates.filter((c) => c.type === 'equirectangular') };
+  navCache = {
+    pic,
+    // Walk ARROWS stay 360°-to-360° (sequence stepping)…
+    pano: candidates.filter((c) => c.type === 'equirectangular'),
+    // …but since #46 every picture is enterable (flats become located
+    // patches), they ALL get a floor dot — colored per source/type (#112).
+    targets: candidates,
+  };
   rebuildNav();
 }
 
 function rebuildNav() {
   if (!navCache) return;
-  const { pic, pano } = navCache;
+  const { pic, pano, targets = pano } = navCache;
   const eye = effectiveEye(pic);
   arrows = pickArrows(eye, pano).map((a) => ({ bearing: a.bearing, targetId: a.targetId }));
   // Nearest neighbours first, capped to the shader's MAX_POIS (keeps the count we
-  // report equal to the count we render, and the floor uncluttered).
-  pois = pano
+  // report equal to the count we render, and the floor uncluttered). Since #46
+  // flats are targets too — their dots wear the flat colors (orange/green).
+  const nearby = targets
     .filter((c) => c.id !== pic.id)
     // Dots keep the map's color language in the sphere (#112): per-source,
     // per-type colors from the owning adapter.
-    .map((c) => ({ ...groundOffset(eye, c), dist: distanceM(eye.lon, eye.lat, c.lon, c.lat), color: dotColor(c) }))
+    .map((c) => ({ ...groundOffset(eye, c), dist: distanceM(eye.lon, eye.lat, c.lon, c.lat), color: dotColor(c), source: c.source }))
     .filter((p) => p.dist <= STREET_POI_RADIUS_M)
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, MAX_POIS)
+    .sort((a, b) => a.dist - b.dist);
+  // Fair mix (#112): dense Panoramax coverage must not crowd out the other
+  // sources' nearest dots — each source keeps a few reserved slots.
+  pois = fairMixBySource(nearby, MAX_POIS)
     .map(({ east, north, id, color }) => ({ east, north, id, color }));
   const ps = _photosphere();
   ps?.setNavArrows?.(arrows.map((a) => ({ bearing: a.bearing, id: a.targetId })));
