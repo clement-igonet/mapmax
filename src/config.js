@@ -6,6 +6,14 @@ export const OSM_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 // Panoramax federated meta-catalog (STAC API + vector tiles).
 export const PANORAMAX_API = 'https://api.panoramax.xyz/api';
 
+// Below this zoom NO imagery-source coverage renders — and therefore no
+// coverage tiles are requested (#122): sequence lines at world/country zooms
+// pulled both catalogs' geometry for the whole viewport and froze the map
+// (Mapillary's global coverage especially, since #112). City scale and closer
+// is where picking a street makes sense; the browse prompt already says
+// "zoom in". Picture DOTS stay gated harder, at z17 (#56, LOD.md).
+export const COVERAGE_MIN_ZOOM = 11;
+
 // Mapillary client token (#112) — the PUBLIC client token of the registered
 // "mapmax" app (their client-token model allows it in front-end code; it only
 // grants read access to public imagery). Empty would disable the source; a
