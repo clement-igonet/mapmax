@@ -20,6 +20,8 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Notes |
 |---|---|---|
+| [#124](https://github.com/clement-igonet/mapmax/issues/124) | Level-aware nav: bridge vs under-bridge dots + level switch | **research**: altitude approach built & RETRACTED after field validation ([PR #126](https://github.com/clement-igonet/mapmax/pull/126) closed) — GPS altitude refs differ ~50 m across devices, 15 m within one sequence vs a real 5 m deck↔quay delta; candidate signals in the issue (OSM `bridge`/`layer` way-matching, SfM elevations) |
+| [#125](https://github.com/clement-igonet/mapmax/issues/125) | Legend chip color ≠ dot colors (Panoramax chip orange vs blue 360° dots) | proposal: chips show both dotColors swatches (360°/flat); alt: one hue per source |
 | [#124](https://github.com/clement-igonet/mapmax/issues/124) | Level-aware nav: separate bridge-top vs under-bridge dots + level switch | cluster POIs by altitude (adapters expose `alt`: exif GPSAltitude / Mapillary `computed_altitude`), show current level only, ↑/↓ level chips; ties into the indoor+street north star |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
