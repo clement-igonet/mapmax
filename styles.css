@@ -102,14 +102,28 @@ body {
   color: #fff;
   background: #262626;
   border: 1px solid #444;
-  border-left: 4px solid #888;
   border-radius: 4px;
   cursor: pointer;
+}
+
+/* Per-type dot preview (#125): the same hexes as the map/sphere dots. */
+.source-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  vertical-align: -1px;
 }
 
 .source-chip.chip-off {
   color: #888;
   text-decoration: line-through;
+}
+
+.source-chip.chip-off .source-swatch {
+  opacity: 0.35;
 }
 
 #pic-info {
