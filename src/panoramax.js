@@ -1,6 +1,7 @@
 // Panoramax API client + map layers (sequences and picture points).
 import { PANORAMAX_API, COVERAGE_MIN_ZOOM } from './config.js';
 import { homeApiBase, readPoseFromExif } from './pose.js';
+import { parseAltitude } from './levels.js';
 
 export const SOURCE_ID = 'panoramax';
 export const SEQUENCES_LAYER = 'panoramax-sequences';
@@ -142,6 +143,9 @@ export function normalizeItem(f) {
     // read-only meta-catalog) and any camera-written capture pose.
     homeApi: homeApiBase(links, (links.find((l) => l.rel === 'self') || {}).href),
     exifPose: readPoseFromExif(p.exif),
+    // Altitude in the SOURCE's own reference (#124) — only comparable to other
+    // Panoramax pictures (see levels.js).
+    alt: parseAltitude(p.exif?.['Exif.GPSInfo.GPSAltitude'], p.exif?.['Exif.GPSInfo.GPSAltitudeRef']),
     // Progressive HD refinement (plugin 0.3.0): present on items-list results,
     // null on /search results (fetchTilesConfig recovers it).
     tiles: tilesFromStac(f),

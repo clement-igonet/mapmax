@@ -30,6 +30,10 @@
       <div id="pic-info" hidden></div>
     </div>
     <button type="button" id="exit-street" title="Leave the panorama and return to the map (Esc)" hidden>← Back to map</button>
+    <!-- Level switch (#124): appears only when nearby pictures sit on OTHER
+         levels (bridge deck vs quay below) — one chip per level, click jumps
+         to that level's nearest picture. -->
+    <div id="level-switch" role="group" aria-label="Other levels nearby" hidden></div>
     <!-- The edit-mode tool drawer (#111): opens/closes WITH edition mode via
          the header's Edit button. ROTATION cluster (#106): the 180° flip and
          the angle read-out; translation lives beside the ring (#pose-elev). -->

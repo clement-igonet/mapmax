@@ -11,6 +11,7 @@ import { chooseByHeading, fairMixBySource, pickArrows } from './arrows.js';
 import { STREET_POI_RADIUS_M } from './config.js';
 import { bearingBetween, distanceM, isDragGesture } from './geo.js';
 import { dotColor, getPicture, searchNearby } from './sources.js';
+import { groupByLevel } from './levels.js';
 import { offsetLngLat } from './pose.js';
 import { _photosphere, currentPicture, enterStreetView, getCurrentPositionOffset, isStreetMode, onPictureChanged, onPositionChanged } from './streetview.js';
 
@@ -20,6 +21,11 @@ let pois = []; //   [{ east, north, id }] ground offsets from the eye (m)
 let navCache = null; // { pic, pano } — last fetch, re-derivable per position edit
 let navigating = false;
 let downPoint = null;
+// Other-level groups near the eye (#124): [{ dAlt, count, targetId }], for the
+// ↑/↓ level chips. Rebuilt with the nav; listeners get every update.
+let navLevels = [];
+const levelListeners = [];
+export function onLevelsChanged(cb) { levelListeners.push(cb); }
 
 export function setupNavigation(map) {
   onPictureChanged((pic) => {
@@ -88,12 +94,24 @@ function rebuildNav() {
   if (!navCache) return;
   const { pic, pano, targets = pano } = navCache;
   const eye = effectiveEye(pic);
-  arrows = pickArrows(eye, pano).map((a) => ({ bearing: a.bearing, targetId: a.targetId }));
+  // Level split (#124): only the eye's level keeps floor dots and arrows —
+  // a quay picture 8 m under the bridge deck is NOT a walkable neighbour.
+  // Other levels become jump chips (nearest picture of each level).
+  const grouped = groupByLevel(pic, targets);
+  const sameIds = new Set(grouped.same.map((c) => c.id));
+  navLevels = grouped.levels.map((g) => {
+    const nearest = g.items
+      .map((c) => ({ c, d: distanceM(eye.lon, eye.lat, c.lon, c.lat) }))
+      .sort((a, b) => a.d - b.d)[0];
+    return { dAlt: g.dAlt, count: g.items.length, targetId: nearest.c.id };
+  });
+  for (const cb of levelListeners) cb(navLevels);
+  arrows = pickArrows(eye, pano.filter((c) => sameIds.has(c.id))).map((a) => ({ bearing: a.bearing, targetId: a.targetId }));
   // Nearest neighbours first, capped to the shader's MAX_POIS (keeps the count we
   // report equal to the count we render, and the floor uncluttered). Since #46
   // flats are targets too — their dots wear the flat colors (orange/green).
   const nearby = targets
-    .filter((c) => c.id !== pic.id)
+    .filter((c) => c.id !== pic.id && sameIds.has(c.id))
     // Dots keep the map's color language in the sphere (#112): per-source,
     // per-type colors from the owning adapter.
     .map((c) => ({ ...groundOffset(eye, c), dist: distanceM(eye.lon, eye.lat, c.lon, c.lat), color: dotColor(c), source: c.source }))
@@ -111,6 +129,8 @@ function rebuildNav() {
 function clearNav(map) {
   arrows = [];
   pois = [];
+  navLevels = [];
+  for (const cb of levelListeners) cb(navLevels);
   navCache = null;
   const ps = _photosphere();
   ps?.setNavArrows?.([]);
@@ -162,4 +182,5 @@ export async function goToNearest(map, lngLat, maxMeters = 30) {
 
 // Test/introspection helpers.
 export const _navCounts = () => ({ arrows: arrows.length, poi: pois.length });
+export const _navLevels = () => navLevels;
 export const _navArrows = () => arrows;

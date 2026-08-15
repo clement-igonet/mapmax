@@ -13,7 +13,7 @@ const GRAPH = 'https://graph.mapillary.com';
 const COVERAGE_TILES = 'https://tiles.mapillary.com/maps/vtp/mly1_public/2/{z}/{x}/{y}';
 const FIELDS =
   'id,geometry,computed_geometry,compass_angle,computed_compass_angle,is_pano,' +
-  'thumb_1024_url,thumb_2048_url,thumb_original_url,sequence,captured_at,creator';
+  'thumb_1024_url,thumb_2048_url,thumb_original_url,sequence,captured_at,creator,altitude';
 
 export const SOURCE_ID = 'mapillary';
 export const SEQUENCES_LAYER = 'mapillary-sequences';
@@ -81,6 +81,10 @@ export function normalizeImage(node) {
     producer: node.creator?.username,
     license: 'CC-BY-SA-4.0',
     datetime: Number.isFinite(node.captured_at) ? new Date(node.captured_at).toISOString() : undefined,
+    // Raw GPS altitude — Mapillary's reference differs from Panoramax's, so
+    // it is only compared to other Mapillary pictures (#124, levels.js).
+    // computed_altitude is deliberately ignored: its reference is inconsistent.
+    alt: Number.isFinite(node.altitude) ? node.altitude : undefined,
     homeApi: null, // read-only: corrections have nowhere to go
     exifPose: {},
     tiles: null, // no tiled derivates → single-texture path

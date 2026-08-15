@@ -9,7 +9,7 @@ import { mapillarySource, mapillaryToken } from './mapillary.js';
 import { registerSource, addCoverage, onPictureClick, getPicture, isEditable, allSources, sourceOf, setSourceVisible, encodePicRef, decodePicRef } from './sources.js';
 import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
-import { setupNavigation } from './navigation.js';
+import { navigateTo, onLevelsChanged, setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
@@ -66,6 +66,24 @@ export const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
 setupNavigation(map);
+// Level switch (#124): when nearby pictures sit on other levels (bridge deck
+// vs the quay below), one chip per level jumps to its nearest picture. Hidden
+// whenever every candidate shares the eye's level — the common case.
+const levelSwitch = document.getElementById('level-switch');
+onLevelsChanged((levels) => {
+  levelSwitch.replaceChildren();
+  levelSwitch.hidden = !levels.length;
+  for (const lvl of levels) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'level-chip';
+    const dir = lvl.dAlt > 0 ? '↑' : '↓';
+    chip.textContent = `${dir} ${Math.abs(Math.round(lvl.dAlt))} m ${lvl.dAlt > 0 ? 'above' : 'below'} (${lvl.count})`;
+    chip.title = `Jump to the nearest picture ${Math.abs(Math.round(lvl.dAlt))} m ${lvl.dAlt > 0 ? 'above' : 'below'} — e.g. ${lvl.dAlt > 0 ? 'up onto the bridge' : 'down under the bridge'}`;
+    chip.addEventListener('click', () => navigateTo(map, lvl.targetId).catch((err) => console.error('level jump', err)));
+    levelSwitch.append(chip);
+  }
+});
 setupControls(map);
 setupMinimap(map);
 // Cap the tilt so the map never renders 3D buildings + Panoramax dots out to the

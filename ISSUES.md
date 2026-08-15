@@ -14,13 +14,15 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); **branch→sandbox deploys now CI-driven** ([#117](https://github.com/clement-igonet/mapmax/pull/117), R14: `workflow_dispatch` on any ref, sandbox-only off main) |
 | [#112](https://github.com/clement-igonet/mapmax/issues/112) | Multi-source 360° imagery (Mapillary, Commons, self-hosted, …) | [#116](https://github.com/clement-igonet/mapmax/pull/116) | **phases 1+2**: `src/sources.js` adapter registry (capability gating, cross-source searchNearby, read-only edit gate) + **Mapillary adapter** (Graph API v4, coverage tiles, sequences, `is_pano` 360s); "mapmax" app client token baked in config.js, all endpoints live-validated; UI reveal (source legend chips, per-picture provenance, multi-source prompt); per-source floor-dot colors (plugin setNavPois color, upstreamed); **phases 1+2 IN PRODUCTION** (deployed & verified all envs 2026-08-15); next: Commons `Pano360` POI spheres |
+| [#124](https://github.com/clement-igonet/mapmax/issues/124) | Level-aware nav: bridge-top vs under-bridge dots + level switch | [#126](https://github.com/clement-igonet/mapmax/pull/126) (draft) | adapters expose per-source `alt` (exif GPSAltitude rational / Mapillary GPS altitude; cross-source refs NOT comparable → fail-open); `levels.js` groups by gaps > 4 m; floor dots/arrows = eye's level only; ↑/↓ jump chips |
+
 
 
 ## Backlog (open, not started)
 
 | Issue | Title | Notes |
 |---|---|---|
-| [#124](https://github.com/clement-igonet/mapmax/issues/124) | Level-aware nav: separate bridge-top vs under-bridge dots + level switch | cluster POIs by altitude (adapters expose `alt`: exif GPSAltitude / Mapillary `computed_altitude`), show current level only, ↑/↓ level chips; ties into the indoor+street north star |
+| [#125](https://github.com/clement-igonet/mapmax/issues/125) | Legend chip color ≠ dot colors (Panoramax chip orange vs blue 360° dots) | proposal: chips show both dotColors swatches (360°/flat); alt: one hue per source |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
 | [#87](https://github.com/clement-igonet/mapmax/issues/87) | Position-only tile/LOD (app-level) | app-side mitigations shipped (#87 gate pin, #95 clip); full fix tracked upstream via #94 |
