@@ -324,7 +324,7 @@ const nav = await page.evaluate(async () => {
            yawChanged, fovChanged, minimapShown, fovSyncEnter, fovSyncAfterZoom,
            dragChangedYaw, pictureStableAfterDrag, walkedToNext, walkStillInside, smoothWalk, walkMixSeen,
            panoYawApplied, walkPanoYawApplied, urlPicOnEnter, deepLinkId, urlPicAfterExit,
-           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount,
+           navTargets, hasGlNavLayers, clickEmptyStable, navAfterExit, arrowsNotClipped, shaderArrowCount, shaderPoiCount, ncArrows: nc.arrows, ncPoi: nc.poi, noMapNavLayer,
            picInfoShowsId, picInfoHasBadge, picInfoHasOriginalLink, enteredIs360,
            buildingGateInside, buildingGateAfter,
            backdropApplied, bgAfterExit: map.getPaintProperty('background', 'background-color') };
@@ -360,7 +360,7 @@ if (nav.skipped) {
   softAssert(nav.smoothWalk, `walk teleported instead of dollying — crossfade never ramped (mix seen ${nav.walkMixSeen?.toFixed?.(2)}) (#5b)`);
   assert.ok(nav.panoYawApplied, 'photo texture not oriented by the picture heading — would misalign with the vector world (#52)');
   softAssert(nav.walkPanoYawApplied, 'walked panorama not re-oriented by its own heading (#52)');
-  assert.ok(nav.hasGlNavLayers, 'incrusted nav out of sync — a map-plane nav layer exists, or shader arrow/POI counts mismatch (#39)');
+  assert.ok(nav.hasGlNavLayers, `incrusted nav out of sync — a map-plane nav layer exists, or shader arrow/POI counts mismatch (#39): shaderArrows=${nav.shaderArrowCount} navArrows=${nav.ncArrows} shaderPois=${nav.shaderPoiCount} navPois=${nav.ncPoi} mapNavLayerLeak=${!nav.noMapNavLayer}`);
   assert.ok(nav.navTargets > 0, 'no navigation targets (arrows/POI) to neighbour 360s');
   assert.ok(nav.arrowsNotClipped, 'shader ground arrow was not hittable across grazing pitches — would be cropped (#26)');
   assert.ok(nav.clickEmptyStable, 'clicking empty space navigated — must only navigate on a feature (#32)');

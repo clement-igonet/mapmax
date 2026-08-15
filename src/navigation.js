@@ -7,7 +7,7 @@
 // map-plane near clip at grazing pitch — the "cropped / giant blob" is
 // impossible there (#26, #39). Clicks/hover hit-test via the same floor
 // ray-cast (queryRenderedFeatures is unreliable at eye-level pitch).
-import { chooseByHeading, pickArrows } from './arrows.js';
+import { chooseByHeading, fairMixBySource, pickArrows } from './arrows.js';
 import { STREET_POI_RADIUS_M } from './config.js';
 import { bearingBetween, distanceM, isDragGesture } from './geo.js';
 import { dotColor, getPicture, searchNearby } from './sources.js';
