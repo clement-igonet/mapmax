@@ -7,7 +7,7 @@
 // serves the full panorama. Image URLs are TIME-LIMITED CDN links — always
 // fetched lazily, never persisted (SOURCES.md). Imagery license: CC-BY-SA 4.0,
 // displayed as '© Mapillary' on the map attribution.
-import { MAPILLARY_TOKEN } from './config.js';
+import { MAPILLARY_TOKEN, COVERAGE_MIN_ZOOM } from './config.js';
 
 const GRAPH = 'https://graph.mapillary.com';
 const COVERAGE_TILES = 'https://tiles.mapillary.com/maps/vtp/mly1_public/2/{z}/{x}/{y}';
@@ -146,6 +146,9 @@ export function addMapillaryLayers(map) {
   map.addLayer({
     id: SEQUENCES_LAYER,
     type: 'line',
+    // No coverage below city zoom — keeps world/country views from fetching
+    // the whole catalog's geometry (#122).
+    minzoom: COVERAGE_MIN_ZOOM,
     source: SOURCE_ID,
     'source-layer': 'sequence',
     paint: {

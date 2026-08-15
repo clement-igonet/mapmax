@@ -1,5 +1,5 @@
 // Panoramax API client + map layers (sequences and picture points).
-import { PANORAMAX_API } from './config.js';
+import { PANORAMAX_API, COVERAGE_MIN_ZOOM } from './config.js';
 import { homeApiBase, readPoseFromExif } from './pose.js';
 
 export const SOURCE_ID = 'panoramax';
@@ -20,6 +20,9 @@ export function addPanoramaxLayers(map) {
   map.addLayer({
     id: SEQUENCES_LAYER,
     type: 'line',
+    // No coverage below city zoom — keeps world/country views from fetching
+    // the whole catalog's geometry (#122).
+    minzoom: COVERAGE_MIN_ZOOM,
     source: SOURCE_ID,
     'source-layer': 'sequences',
     paint: {
