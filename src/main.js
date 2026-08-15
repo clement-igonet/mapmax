@@ -185,9 +185,19 @@ function buildSourceLegend() {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'source-chip';
-    chip.textContent = s.name;
-    chip.style.borderLeftColor = s.color || '#888';
-    chip.title = `Show/hide ${s.name} coverage`;
+    // The chip previews the ACTUAL dot colors (#125): one swatch per type,
+    // matching what renders on the map and the sphere floor — a single brand
+    // color taught the wrong mapping (orange chip vs blue 360° dots).
+    for (const kind of ['equirectangular', 'flat']) {
+      const hex = s.dotColors?.[kind];
+      if (!hex) continue;
+      const dot = document.createElement('span');
+      dot.className = 'source-swatch';
+      dot.style.background = hex;
+      chip.append(dot);
+    }
+    chip.append(document.createTextNode(s.name));
+    chip.title = `${s.name} — first swatch: 360° dots, second: flat photos. Click to show/hide its coverage.`;
     chip.classList.toggle('chip-off', !sourceShown.get(s.id));
     chip.addEventListener('click', () => {
       const on = !sourceShown.get(s.id);
