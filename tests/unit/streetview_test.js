@@ -6,6 +6,7 @@ const pic = {
   lon: 2.325,
   lat: 48.86,
   heading: 208,
+  type: 'equirectangular',
   assets: { hd: 'hd.jpg', sd: 'sd.jpg', thumb: 't.jpg' },
 };
 
@@ -46,6 +47,10 @@ Deno.test('pictureToTarget: falls back through sd → thumb, heading defaults to
     panoPitch: 0,
     panoRoll: 0,
     tiles: null,
+    // UNTYPED pictures are conservatively flat (#40): never stretched onto
+    // the sphere — they get the gnomonic window with the default FOV (#139).
+    projection: 'flat',
+    hfov: 70,
   });
 });
 
@@ -74,4 +79,14 @@ Deno.test('originalImageUrl: prefers hd, falls back, empty when none (#40)', () 
   assertEquals(originalImageUrl({ assets: { sd: 's' } }), 's');
   assertEquals(originalImageUrl({ assets: {} }), '');
   assertEquals(originalImageUrl(null), '');
+});
+
+Deno.test('pictureToTarget: flat pictures declare the native gnomonic window (#139)', () => {
+  const flat = pictureToTarget({ ...pic, type: 'flat', hfov: 62 });
+  assertEquals(flat.projection, 'flat');
+  assertEquals(flat.hfov, 62);
+  const flatDefault = pictureToTarget({ ...pic, type: 'flat', hfov: undefined });
+  assertEquals(flatDefault.hfov, 70); // sane default when metadata lacks one
+  // 360° targets stay untouched — no projection field at all.
+  assertEquals('projection' in pictureToTarget({ ...pic, type: 'equirectangular' }), false);
 });
