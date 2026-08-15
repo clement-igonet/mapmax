@@ -20,10 +20,12 @@ Deno.test('docker-compose.yml defines edge + web + containerized-Chromium e2e se
   assert(dc.includes('e2e:'), 'e2e service missing');
   assert(dc.includes('build: tests/browser'), 'e2e must build the Chromium test image');
   assert(dc.includes('TARGET_URL'), 'e2e must accept TARGET_URL override');
-  // Public exposure: a Caddy edge owns 127.0.0.1:8087 (the platform proxy target)
+  // Public exposure: a Caddy edge owns the 1PESI band port (mapmax = 14000)
+  // and dual-publishes the legacy 8087 until the platform proxy moves over.
   assert(dc.includes('edge:'), 'edge service missing');
   assert(dc.includes('caddy'), 'edge must run Caddy');
-  assert(dc.includes('127.0.0.1:${WEB_PORT:-8087}:80'), 'edge must bind 127.0.0.1:8087 for the platform reverse-proxy');
+  assert(dc.includes('127.0.0.1:${WEB_PORT:-14000}:80'), 'edge must bind the 14xxx band port for the platform reverse-proxy');
+  assert(dc.includes('127.0.0.1:${WEB_PORT_LEGACY:-8087}:80'), 'edge must keep dual-publishing legacy 8087 during the migration');
   assert(dc.includes('docker/Caddyfile'), 'edge must mount the mapmax Caddyfile');
 });
 
