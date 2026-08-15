@@ -18,7 +18,9 @@ After=default.target
 [Service]
 Type=simple
 WorkingDirectory=%h/projects/mapmax
-Environment=WEB_PORT=8087
+# 1PESI band (platform PR #10): 14000 is the home port; the compose file
+# dual-publishes legacy 8087 until the platform decommissions it.
+Environment=WEB_PORT=14000
 Environment=XDG_RUNTIME_DIR=/run/user/1002
 ExecStartPre=-/usr/bin/podman-compose down
 ExecStart=/usr/bin/podman-compose up edge web web-staging web-sandbox
