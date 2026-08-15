@@ -10,7 +10,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 SRC="$PWD"
 DEST="${DEPLOY_DIR:-$HOME/projects/mapmax}"
-PORT="${WEB_PORT:-8087}"
+# 1PESI band (platform PR #10): health-check through the new home port.
+PORT="${WEB_PORT:-14000}"
 TARGET="${DEPLOY_TARGET:-all}"
 
 health_check() { # $1 = vhost, $2 = tree the served files must match
