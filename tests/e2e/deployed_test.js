@@ -23,7 +23,7 @@ Deno.test('deployed app hardens style against console errors (issue #14)', async
 });
 
 Deno.test('deployed JS modules are served', async () => {
-  const mods = ['config', 'main', 'geo', 'panoramax', 'streetview', 'navigation', 'arrows', 'stylefix', 'sources', 'mapillary', 'commons', 'flatpatch'];
+  const mods = ['config', 'main', 'geo', 'panoramax', 'streetview', 'navigation', 'arrows', 'stylefix', 'sources', 'mapillary', 'commons'];
   for (const mod of mods) {
     const res = await fetch(`${BASE}/src/${mod}.js`);
     assertEquals(res.status, 200, `src/${mod}.js not deployed`);

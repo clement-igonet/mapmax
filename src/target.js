@@ -19,6 +19,11 @@ export function pictureToTarget(pic, preferHd = false) {
     panoRoll: pic.poseRoll || 0,
     // Tiled HD derivate → progressive refinement (plugin 0.3.0), when known.
     tiles: pic.tiles || null,
+    // Flat (non-360°) pictures render natively as a gnomonic window since
+    // plugin 0.5.0 (#139/#46): hfov from the capture metadata, vfov derived
+    // from the image aspect by the plugin; the vector map shows through
+    // around the window. Never stretched over the sphere (#40).
+    ...(pic.type !== 'equirectangular' ? { projection: 'flat', hfov: pic.hfov || 70 } : {}),
   };
 }
 
