@@ -8,7 +8,7 @@ import { pictureToTarget } from './target.js';
 import { suspendTileLayers, resumeTileLayers } from './tilebudget.js';
 import { applyStreetBackdrop, removeStreetBackdrop } from './backdrop.js';
 import { consensusVerdict, sunYawVerdict } from './sunflip.js';
-import { coverageSources, fetchTilesConfig, getSequence } from './sources.js';
+import { coverageSources, fetchTilesConfig, getSequence, setAllCoverageVisible } from './sources.js';
 import { POSE_STORE_KEY, POSITION_STORE_KEY, composePoseGesture, normalizeYaw, offsetLngLat } from './pose.js';
 
 export { pictureToTarget };
@@ -316,8 +316,11 @@ export async function enterStreetView(map, pic) {
       onEnter: () => {
         document.body.classList.add('street-mode');
         // Stop the pitch-90 tile-loading explosion: the sphere hides the map,
-        // so suspend all tiled layers while inside (#11).
+        // so suspend all tiled layers while inside (#11). Non-tiled coverage
+        // (Commons geojson) is hidden separately — AFTER the suspend, so the
+        // tile budget records the pre-street visibility (#112).
         suspendTileLayers(map);
+        setAllCoverageVisible(map, false);
         // Ground + sky backdrop so the vector-only view is never a raw-white
         // void (#37).
         applyStreetBackdrop(map);
@@ -382,8 +385,10 @@ export function exitStreetView() {
   flushPoseSave(); // don't lose a tweak made just before Esc (#98)
   if (!photosphere) return;
   // Restore tiled layers before the exit animation so the map is there to
-  // animate back onto (#11).
+  // animate back onto (#11); non-tiled coverage comes back with them (the
+  // legend's own toggles are reapplied by main.js on exit).
   resumeTileLayers(svMap);
+  setAllCoverageVisible(svMap, true);
   if (photosphere.mode === 'inside') photosphere.exit();
   else if (photosphere.mode === 'entering') pendingExit = true; // exit once entered
 }

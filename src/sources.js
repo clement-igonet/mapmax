@@ -123,6 +123,14 @@ export function decodePicRef(ref) {
 // in-sphere ground dots instead, whatever their source.
 export const coverageSources = () => allSources().map((s) => s.id);
 
+// Hide/show every source's coverage layers at once. Street mode needs this on
+// top of the tile budget: a GEOJSON-backed coverage (Commons) is not a tiled
+// source, so suspendTileLayers never touches it — without this its dots would
+// bleed through the blend inside the sphere exactly like #27's.
+export function setAllCoverageVisible(map, visible) {
+  for (const s of allSources()) setSourceVisible(map, s.id, visible);
+}
+
 // '#rrggbb' → [r, g, b] in 0..1 (the viewer's per-dot color format).
 export function hexToRgb01(hex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
