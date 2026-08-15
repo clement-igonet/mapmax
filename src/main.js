@@ -6,6 +6,7 @@ import { MAPMAX_ENV } from './env.js';
 import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
 import { panoramaxSource } from './panoramax.js';
 import { mapillarySource, mapillaryToken } from './mapillary.js';
+import { commonsSource } from './commons.js';
 import { registerSource, addCoverage, onPictureClick, getPicture, isEditable, allSources, sourceOf, setSourceVisible, encodePicRef, decodePicRef } from './sources.js';
 import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
@@ -22,6 +23,7 @@ import { setupLicenseGate } from './licensegate.js';
 // client token is configured (config.js or ?mapillary_token=…).
 registerSource(panoramaxSource);
 if (mapillaryToken()) registerSource(mapillarySource);
+registerSource(commonsSource); // tokenless — Pano360 POI spheres (#112)
 
 // On the sandbox host, require a Polar license key before revealing the app
 // (#76). No-op on www / localhost. Fire-and-forget: it mounts its own overlay.
@@ -307,6 +309,9 @@ const leaveStreetUI = () => {
   editMain.disabled = true;
   editMain.title = 'Enter a 360° panorama first — Adjust fixes its orientation and position in your browser only';
   setEditModeUI(false); // closes the drawer + edit mode together (#111)
+  // Exiting restored every coverage layer — reapply the legend's toggles so a
+  // source the user hid stays hidden (#112).
+  for (const [id, on] of sourceShown) if (!on) setSourceVisible(map, id, false);
   // Back to the 50/50 default for the next entry (#101) — streetview.js resets
   // its remembered blend on exit to match.
   blendSlider.value = String(STREET_DEFAULT_BLEND * 100);
