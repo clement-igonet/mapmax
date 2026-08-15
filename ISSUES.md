@@ -20,6 +20,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Notes |
 |---|---|---|
+| [#124](https://github.com/clement-igonet/mapmax/issues/124) | Level-aware nav: separate bridge-top vs under-bridge dots + level switch | cluster POIs by altitude (adapters expose `alt`: exif GPSAltitude / Mapillary `computed_altitude`), show current level only, ↑/↓ level chips; ties into the indoor+street north star |
 | [#93](https://github.com/clement-igonet/mapmax/issues/93) | Panorama loading-progress indicator | |
 | [#92](https://github.com/clement-igonet/mapmax/issues/92) | Sandbox soft 360° usage counter (100) | |
 | [#87](https://github.com/clement-igonet/mapmax/issues/87) | Position-only tile/LOD (app-level) | app-side mitigations shipped (#87 gate pin, #95 clip); full fix tracked upstream via #94 |
@@ -31,6 +32,7 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | Resolution |
 |---|---|---|
+| [#122](https://github.com/clement-igonet/mapmax/issues/122) | Low-zoom performance: coverage tiles loaded worldwide | [#123](https://github.com/clement-igonet/mapmax/pull/123) merged: `COVERAGE_MIN_ZOOM=11` on the sequence layers — below city zoom no coverage tiles are requested at all (dots already z17, #56); closed 2026-08-15 |
 | [#46](https://github.com/clement-igonet/mapmax/issues/46) | Flat pictures as located patches | [#121](https://github.com/clement-igonet/mapmax/pull/121) merged (continuation of #120): flat photos enter the photosphere as an equirect patch at capture heading/FOV; popup kept as fallback; floor dots for every picture in per-source colors with fair slot reservation; deployed & verified all envs; closed 2026-08-15 |
 | [#110](https://github.com/clement-igonet/mapmax/issues/110) | Graduate vendored photosphere improvements to maplibre-gl-photosphere | [maplibre-gl-photosphere v0.4.0](https://github.com/clement-igonet/maplibre-gl-photosphere/releases/tag/v0.4.0) released canonically (bump PR → npm + tag + GH Release, [PR #114](https://github.com/clement-igonet/mapmax/pull/114) un-forks MapMax onto the verbatim release files + VENDOR.md); gesture/edit vendored from [maplibre-gl-panoramax](https://github.com/clement-igonet/maplibre-gl-panoramax)@main (repo at 0.1.0, 0.2.0 staged under `## main`, npm bootstrap pending user token); closed 2026-08-12 |
 | [#111](https://github.com/clement-igonet/mapmax/issues/111) | Reader chrome + product pivot: READ-oriented, local-only 🔧 Adjust | [#113](https://github.com/clement-igonet/mapmax/pull/113) merged (true-merge of the #108→#109→#113 train); auth/write-back removed app-wide (lives on in maplibre-gl-panoramax); deployed & verified all envs; closed 2026-08-11 |
