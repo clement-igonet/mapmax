@@ -39,22 +39,25 @@
         <span id="pose-rot-val">Pitch 0° · Roll 0° · Yaw 0°</span>
       </div>
       <button type="button" id="pose-auto" title="Compare this photo with the vector world and propose a yaw correction (#142)">🧭 Auto-fix orientation</button>
-      <!-- Auto-fix preview (#142): the vector world on top, the photo below,
-           both unrolled over the same 360° of azimuth — a yaw error reads as
-           a horizontal offset between the two bands. -->
-      <div id="auto-preview" hidden>
-        <canvas id="auto-strips" width="180" height="104"></canvas>
-        <div id="auto-verdict"></div>
-        <div class="pose-actions">
-          <button type="button" id="auto-apply">Apply</button>
-          <button type="button" id="auto-skip">Skip</button>
-          <button type="button" id="auto-dismiss">Close</button>
-        </div>
-      </div>
       <div class="pose-actions">
         <button type="button" id="pose-reset">Reset</button>
       </div>
       <div id="pose-status">Corrections apply live and persist in this browser only.</div>
+    </div>
+    <!-- Auto-fix preview (#142): its OWN overlay, never a child of the pose
+         panel — extra surface inside that panel stopped it rasterizing over
+         the WebGL canvas (#100). The strips canvas is created on demand and
+         removed on close, so the idle DOM is exactly what it was. -->
+    <div id="auto-preview" hidden>
+      <!-- Which axis is being checked, at a glance: current one highlighted,
+           done ✔, skipped ✕, nothing-proposed dimmed. -->
+      <div id="auto-axes" role="status"></div>
+      <div id="auto-verdict"></div>
+      <div class="pose-actions">
+        <button type="button" id="auto-apply">Apply</button>
+        <button type="button" id="auto-skip">Skip</button>
+        <button type="button" id="auto-dismiss">Close</button>
+      </div>
     </div>
     <canvas id="minimap" width="132" height="132" hidden></canvas>
     <!-- Roll ring for the pose edit mode (#106): the dashed circle is visual

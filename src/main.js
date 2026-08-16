@@ -360,8 +360,9 @@ onPictureChanged(() => syncPosePanel());
 // circular correlation reads off (autoyaw.js). Everything stays local (#111).
 const autoBtn = document.getElementById('pose-auto');
 const autoPreview = document.getElementById('auto-preview');
-const autoStrips = document.getElementById('auto-strips');
+let autoStrips = null; // created on demand (#142) — see ensureStrips()
 const autoVerdict = document.getElementById('auto-verdict');
+const autoAxes = document.getElementById('auto-axes');
 const autoApply = document.getElementById('auto-apply');
 const autoSkip = document.getElementById('auto-skip');
 const norm360 = (d) => ((d % 360) + 360) % 360;
@@ -372,8 +373,26 @@ let autoScan = null; // { world, photo, baseYaw, proposal } — one stand-point
 // Redraw both bands for the CURRENT pose: the photo band is rolled by however
 // much the yaw moved since the scan, so every correction (auto, ring, flip)
 // shows up as the bands sliding into — or out of — alignment.
+// The strips canvas exists only while the preview is open: an idle canvas in
+// the overlay was enough to upset rasterization on the affected GPU (#100).
+function ensureStrips() {
+  if (autoStrips) return autoStrips;
+  autoStrips = document.createElement('canvas');
+  autoStrips.id = 'auto-strips';
+  autoStrips.width = 180;
+  autoStrips.height = 104;
+  autoPreview.prepend(autoStrips);
+  return autoStrips;
+}
+
+function removeStrips() {
+  autoStrips?.remove();
+  autoStrips = null;
+}
+
 function drawAutoPreview() {
   if (!autoScan || autoPreview.hidden) return;
+  ensureStrips();
   const ctx = autoStrips.getContext('2d');
   ctx.clearRect(0, 0, autoStrips.width, autoStrips.height);
   ctx.putImageData(autoScan.world, 0, 0);
@@ -400,6 +419,7 @@ async function runAutoFix() {
   if (!ps || !url) return;
   autoBtn.disabled = true;
   autoPreview.hidden = true;
+  removeStrips();
   try {
     poseStatus.textContent = 'Scanning the vector world — the view spins once. Then: Yaw → Pitch → Roll.';
     const world = await scanWorldStrip(map, ps, {
@@ -489,38 +509,67 @@ function buildAutoSteps(proposal, tilt) {
   renderAutoStep();
 }
 
-// "Yaw ✔ · Pitch ▶ · Roll ·" — which axis is being checked, at a glance.
-function axisMap() {
-  const state = (axis) => {
-    const i = autoSteps.findIndex((s) => s.axis === axis);
-    if (i === -1) return `${axis} —`; // nothing proposed on this axis
-    if (autoApplied.some((l) => l.startsWith(axis))) return `${axis} ✔`;
-    if (autoSkipped.includes(axis)) return `${axis} ✕`;
-    return i === autoStep ? `${axis} ▶` : `${axis} ·`;
-  };
-  return ['Yaw', 'Pitch', 'Roll'].map(state).join('  ');
+// Which axis is being checked, at a glance: a chip row (current one in the
+// brand colour), a headline, and the axis named on the buttons themselves —
+// "Apply Yaw −2.0°" leaves no doubt about what is about to change.
+function renderAxisChips() {
+  autoAxes.replaceChildren();
+  for (const axis of ['Yaw', 'Pitch', 'Roll']) {
+    const i = autoSteps.findIndex((st) => st.axis === axis);
+    const chip = document.createElement('span');
+    chip.className = 'axis-chip';
+    let mark = '';
+    if (i === -1) { chip.classList.add('axis-none'); mark = ' —'; }
+    else if (autoApplied.some((l) => l.startsWith(axis))) { chip.classList.add('axis-done'); mark = ' ✔'; }
+    else if (autoSkipped.includes(axis)) { chip.classList.add('axis-skipped'); mark = ' ✕'; }
+    else if (i === autoStep) chip.classList.add('axis-current');
+    chip.textContent = axis + mark;
+    autoAxes.append(chip);
+  }
+}
+
+function setVerdict(headline, body) {
+  autoVerdict.replaceChildren();
+  if (headline) {
+    const h = document.createElement('div');
+    h.className = 'auto-head';
+    h.textContent = headline;
+    autoVerdict.append(h);
+  }
+  const b = document.createElement('div');
+  b.textContent = body;
+  autoVerdict.append(b);
 }
 
 function renderAutoStep() {
   const step = autoSteps[autoStep];
+  renderAxisChips();
   const done = autoApplied.length ? `Fixed: ${autoApplied.join(' · ')}. ` : '';
   const skipped = autoSkipped.length ? `Skipped: ${autoSkipped.join(', ')}. ` : '';
   if (step) {
-    autoVerdict.textContent =
-      `${axisMap()}\nStep ${autoStep + 1}/${autoSteps.length} — ${step.axis}: ${step.hint}.\n${done}${skipped}Top: vector world · bottom: photo.`;
+    setVerdict(
+      `▶ ${step.axis} — step ${autoStep + 1} of ${autoSteps.length}`,
+      `${step.hint}. ${done}${skipped}Top band: vector world · bottom band: photo.`
+    );
+    autoApply.textContent = `Apply ${step.label}`;
+    autoSkip.textContent = `Skip ${step.axis}`;
     autoApply.disabled = false;
     autoSkip.disabled = false;
     return;
   }
+  autoApply.textContent = 'Apply';
+  autoSkip.textContent = 'Skip';
   autoApply.disabled = true;
   autoSkip.disabled = true;
   if (!autoSteps.length) {
-    autoVerdict.textContent = `${axisMap()}\n${autoIntro}\nTop: vector world · bottom: photo.`;
+    setVerdict('Nothing to change', `${autoIntro} Top band: vector world · bottom band: photo.`);
     return;
   }
-  autoVerdict.textContent = autoApplied.length
-    ? `${axisMap()}\n${done}${skipped}Done — the bands should line up now. Fine-tune with the ring if needed.`
-    : `${axisMap()}\nNothing changed — every suggestion was skipped (${autoSkipped.join(', ')}). The photo is as it was.`;
+  if (autoApplied.length) {
+    setVerdict('Done', `${done}${skipped}The bands should line up now. Fine-tune with the ring if needed.`);
+  } else {
+    setVerdict('Nothing changed', `Every suggestion was skipped (${autoSkipped.join(', ')}). The photo is as it was.`);
+  }
 }
 
 autoBtn.addEventListener('click', runAutoFix);
@@ -541,9 +590,9 @@ autoSkip.addEventListener('click', () => {
   autoStep++;
   renderAutoStep();
 });
-document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; });
+document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; removeStrips(); });
 // A different picture means a different stand-point: the scan no longer applies.
-onPictureChanged(() => { autoScan = null; autoPreview.hidden = true; });
+onPictureChanged(() => { autoScan = null; autoPreview.hidden = true; removeStrips(); });
 
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
