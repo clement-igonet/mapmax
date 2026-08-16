@@ -88,14 +88,14 @@ const chrome = await page.evaluate(() => ({
   // #142: the auto-fix entry ships in the Adjust drawer, its preview idle.
   // Computed display, not just the attribute: a stray `display` rule silently
   // defeats [hidden] and inflates the drawer past what the GPU paints (#100).
-  autoFixReady: !!document.getElementById('pose-auto')
+  autoFixReady: ['auto-yaw', 'auto-pitch', 'auto-roll'].every((id) => !!document.getElementById(id))
     && getComputedStyle(document.getElementById('auto-preview')).display === 'none',
 }));
 assert.ok(chrome.topbar, 'header bar missing (#111)');
 assert.match(chrome.brand, /MapMax/, 'brand missing from the header (#111)');
 assert.ok(chrome.editDisabled, 'Adjust must be disabled in map mode (#111)');
 assert.ok(chrome.noAuth, 'read-oriented app must ship no auth/write-back UI (#111)');
-assert.ok(chrome.autoFixReady, 'auto-fix orientation entry + idle preview must ship in the drawer (#142)');
+assert.ok(chrome.autoFixReady, 'one auto-fix button per rotation axis + idle preview must ship in the drawer (#142)');
 console.log('[e2e] reader chrome: brand + disarmed Adjust + no auth/write-back UI (#111) OK');
 
 // Map-mode clutter cap (#41): the tilt is limited so the map never renders 3D

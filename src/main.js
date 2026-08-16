@@ -358,21 +358,21 @@ onPictureChanged(() => syncPosePanel());
 // Unroll the vector world and the panorama over the SAME 360° of azimuth: a
 // yaw error is then just a horizontal offset between the two bands, which a
 // circular correlation reads off (autoyaw.js). Everything stays local (#111).
-const autoBtn = document.getElementById('pose-auto');
+const autoButtons = [
+  { axis: 'Yaw', el: document.getElementById('auto-yaw') },
+  { axis: 'Pitch', el: document.getElementById('auto-pitch') },
+  { axis: 'Roll', el: document.getElementById('auto-roll') },
+];
 const autoPreview = document.getElementById('auto-preview');
 let autoStrips = null; // created on demand (#142) — see ensureStrips()
 const autoVerdict = document.getElementById('auto-verdict');
-const autoAxes = document.getElementById('auto-axes');
 const autoApply = document.getElementById('auto-apply');
-const autoSkip = document.getElementById('auto-skip');
 const norm360 = (d) => ((d % 360) + 360) % 360;
 // The world azimuth the image centre currently claims to face.
 const currentPanoYaw = () => norm360((currentPic?.heading || 0) + (getCurrentPose()?.yaw || 0));
-let autoScan = null; // { world, photo, baseYaw, proposal } — one stand-point
+let autoScan = null; // { world, photo, baseYaw, picId } — one stand-point
+let autoPending = null; // the correction the Apply button would make
 
-// Redraw both bands for the CURRENT pose: the photo band is rolled by however
-// much the yaw moved since the scan, so every correction (auto, ring, flip)
-// shows up as the bands sliding into — or out of — alignment.
 // The strips canvas exists only while the preview is open: an idle canvas in
 // the overlay was enough to upset rasterization on the affected GPU (#100).
 function ensureStrips() {
@@ -390,215 +390,134 @@ function removeStrips() {
   autoStrips = null;
 }
 
+// The photo band AS IT STANDS under the current pose — the basis for every
+// measurement, so each axis is judged on what is still wrong after the
+// corrections already applied (#142).
+function posedPhotoStrip() {
+  const pose = getCurrentPose() || { pitch: 0, roll: 0 };
+  return poseStrip(autoScan.photo, {
+    dYawDeg: autoScan.baseYaw - currentPanoYaw(),
+    pitchDeg: pose.pitch,
+    rollDeg: pose.roll,
+    centreAz: currentPanoYaw(),
+    bandDeg: BAND_DEG,
+  });
+}
+
 function drawAutoPreview() {
   if (!autoScan || autoPreview.hidden) return;
   ensureStrips();
   const ctx = autoStrips.getContext('2d');
   ctx.clearRect(0, 0, autoStrips.width, autoStrips.height);
   ctx.putImageData(autoScan.world, 0, 0);
-  // Regenerated under the FULL current pose (#142): yaw rolls it horizontally,
-  // pitch/roll displace it per column — so the axes not yet checked are judged
-  // against the photo as it is now, not as it was captured.
-  const pose = getCurrentPose() || { pitch: 0, roll: 0 };
-  ctx.putImageData(
-    poseStrip(autoScan.photo, {
-      dYawDeg: autoScan.baseYaw - currentPanoYaw(),
-      pitchDeg: pose.pitch,
-      rollDeg: pose.roll,
-      centreAz: currentPanoYaw(),
-      bandDeg: BAND_DEG,
-    }),
-    0,
-    autoStrips.height - autoScan.photo.height
-  );
+  ctx.putImageData(posedPhotoStrip(), 0, autoStrips.height - STRIP_H);
 }
 
-async function runAutoFix() {
-  const ps = _photosphere();
-  const url = currentPic && originalImageUrl(currentPic);
-  if (!ps || !url) return;
-  autoBtn.disabled = true;
-  autoPreview.hidden = true;
-  removeStrips();
-  try {
-    poseStatus.textContent = 'Scanning the vector world — the view spins once. Then: Yaw → Pitch → Roll.';
-    const world = await scanWorldStrip(map, ps, {
-      setBlend,
-      blendAfter: sliderToBlend(blendSlider.value),
-      onProgress: (p) => { poseStatus.textContent = `Scanning the vector world… ${Math.round(p * 100)}%`; },
-    });
-    const baseYaw = currentPanoYaw();
-    const photo = await photoStrip(url, baseYaw);
-    const wp = stripProfiles(world);
-    const pp = stripProfiles(photo);
-    const proposal = proposeYawDelta(pp, wp);
-    // With the yaw aligned, the vertical gap between the two skylines is a
-    // tilt: pitch·cos(a) + roll·sin(a) around the image centre (#142).
-    const n = wp.skyline.length;
-    const centre = baseYaw + (isConfident(proposal) ? proposal.deltaDeg : 0);
+function setVerdict(headline, body) {
+  autoVerdict.replaceChildren();
+  const h = document.createElement('div');
+  h.className = 'auto-head';
+  h.textContent = headline;
+  const b = document.createElement('div');
+  b.textContent = body;
+  autoVerdict.append(h, b);
+}
+
+const setAutoBusy = (busy) => { for (const b of autoButtons) b.el.disabled = busy; };
+const degTxt = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}°`;
+
+// Measure ONE axis on the current bands and stage its correction.
+function measureAxis(axis) {
+  const world = stripProfiles(autoScan.world);
+  const photo = stripProfiles(posedPhotoStrip());
+  autoPending = null;
+  if (axis === 'Yaw') {
+    const p = proposeYawDelta(photo, world);
+    const pct = Number.isFinite(p.score) ? `${Math.round(p.score * 100)}%` : 'n/a';
+    if (!isConfident(p)) {
+      setVerdict('Yaw — no confident match', `${p.method} match ${pct}: too little shared structure here (open sky, trees, night). The photo is unchanged.`);
+    } else if (Math.abs(p.deltaDeg) < 0.5) {
+      setVerdict('Yaw — already aligned', `Within half a degree of the vector world (${p.method} match ${pct}). Nothing to change.`);
+    } else {
+      autoPending = { label: `Yaw ${degTxt(p.deltaDeg)}`, apply: () => setCurrentPose({ yaw: getCurrentPose().yaw + p.deltaDeg }) };
+      setVerdict(`Yaw ${degTxt(p.deltaDeg)}`, `Turn the photo ${degTxt(p.deltaDeg)} (${p.method} match ${pct}). Top band: vector world · bottom band: photo.`);
+    }
+  } else {
+    // Residual tilt of the bands as they stand: a delta to add to the pose.
+    const n = world.skyline.length;
+    const centre = currentPanoYaw();
     const diff = new Float32Array(n);
     const relAz = new Float32Array(n);
     for (let j = 0; j < n; j++) {
-      const pj = (((j - proposal.shift) % n) + n) % n;
-      diff[j] = (pp.skyline[pj] - wp.skyline[j]) * BAND_DEG;
-      relAz[j] = (((((j * 360) / n - centre) % 360) + 540) % 360) - 180;
+      diff[j] = (photo.skyline[j] - world.skyline[j]) * BAND_DEG;
+      relAz[j] = ((((((j * 360) / n - centre) % 360) + 540) % 360) - 180);
     }
-    const tilt = fitTilt(diff, relAz);
-    autoScan = { world, photo, baseYaw, proposal, tilt };
+    const t = fitTilt(diff, relAz);
+    const coef = axis === 'Pitch' ? t.pitchDeg : t.rollDeg;
+    const se = axis === 'Pitch' ? t.sePitch : t.seRoll;
+    const pose = getCurrentPose() || { pitch: 0, roll: 0 };
+    if (!Number.isFinite(coef)) {
+      setVerdict(`${axis} — not measurable`, `Only ${t.samples} usable skyline columns in the compared band; the roofline is hidden here. The photo is unchanged.`);
+    } else if (!axisSignificant(coef, se)) {
+      setVerdict(`${axis} — within the noise`, `Measured ${degTxt(coef)} ±${se.toFixed(1)}° over ${t.samples} skyline columns — not distinguishable from zero. The photo is unchanged.`);
+    } else {
+      const target = (axis === 'Pitch' ? pose.pitch : pose.roll) + coef;
+      const how = axis === 'Pitch'
+        ? `Tip it ${coef >= 0 ? 'up' : 'down'} by ${degTxt(coef)} (to ${degTxt(target)})`
+        : `Let it fall ${coef >= 0 ? 'right' : 'left'} by ${degTxt(coef)} (to ${degTxt(target)})`;
+      autoPending = {
+        label: `${axis} ${degTxt(coef)}`,
+        apply: () => setCurrentPose(axis === 'Pitch' ? { pitch: target } : { roll: target }),
+      };
+      setVerdict(`${axis} ${degTxt(coef)}`, `${how}, ±${se.toFixed(1)}° over ${t.samples} skyline columns.`);
+    }
+  }
+  autoApply.disabled = !autoPending;
+  autoApply.textContent = autoPending ? `Apply ${autoPending.label}` : 'Apply';
+}
+
+async function fixAxis(axis) {
+  const ps = _photosphere();
+  const url = currentPic && originalImageUrl(currentPic);
+  if (!ps || !url) return;
+  setAutoBusy(true);
+  try {
+    if (!autoScan || autoScan.picId !== currentPic.id) {
+      poseStatus.textContent = `Scanning the vector world for ${axis} — the view spins once…`;
+      const world = await scanWorldStrip(map, ps, {
+        setBlend,
+        blendAfter: sliderToBlend(blendSlider.value),
+        onProgress: (p) => { poseStatus.textContent = `Scanning the vector world… ${Math.round(p * 100)}%`; },
+      });
+      const baseYaw = currentPanoYaw();
+      autoScan = { world, photo: await photoStrip(url, baseYaw), baseYaw, picId: currentPic.id };
+    }
     autoPreview.hidden = false;
     drawAutoPreview();
-    buildAutoSteps(proposal, tilt);
+    measureAxis(axis);
     poseStatus.textContent = POSE_STATUS_DEFAULT;
   } catch (err) {
     console.warn('auto-fix scan failed', err);
     poseStatus.textContent = `Scan failed: ${err.message || 'the panorama could not be read'}.`;
   } finally {
-    autoBtn.disabled = false;
+    setAutoBusy(false);
   }
 }
 
-// One axis at a time (#142): the scan proposes yaw, then pitch, then roll —
-// the order they matter in, so a correction is never a three-knob guess. Every
-// outcome is reported: what was applied, what was skipped, and — the case that
-// must never look like success — that nothing was changed at all.
-let autoSteps = [];
-let autoStep = 0;
-let autoApplied = [];
-let autoSkipped = [];
-let autoIntro = '';
-let autoTiltNote = '';
-
-function buildAutoSteps(proposal, tilt) {
-  const pct = Number.isFinite(proposal.score) ? `${Math.round(proposal.score * 100)}%` : 'n/a';
-  const deg = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}°`;
-  autoSteps = [];
-  autoApplied = [];
-  autoSkipped = [];
-  autoStep = 0;
-  if (isConfident(proposal) && Math.abs(proposal.deltaDeg) >= 1) {
-    autoSteps.push({
-      axis: 'Yaw',
-      label: `Yaw ${deg(proposal.deltaDeg)}`,
-      hint: `turn the photo ${deg(proposal.deltaDeg)} (${proposal.method} match ${pct})`,
-      apply: () => setCurrentPose({ yaw: getCurrentPose().yaw + proposal.deltaDeg }),
-    });
-  }
-  // Pitch and roll are judged SEPARATELY against their own uncertainty (#142):
-  // a long straight street pins the roll far better than the pitch, and a
-  // confident roll must not be withheld because the pitch is unmeasurable.
-  if (axisSignificant(tilt.pitchDeg, tilt.sePitch)) {
-    autoSteps.push({
-      axis: 'Pitch',
-      label: `Pitch ${deg(tilt.pitchDeg)}`,
-      hint: `tip it ${tilt.pitchDeg >= 0 ? 'up' : 'down'} to ${deg(tilt.pitchDeg)} (±${tilt.sePitch.toFixed(1)}°, ${tilt.samples} skyline columns)`,
-      apply: () => setCurrentPose({ pitch: tilt.pitchDeg }),
-    });
-  }
-  if (axisSignificant(tilt.rollDeg, tilt.seRoll)) {
-    autoSteps.push({
-      axis: 'Roll',
-      label: `Roll ${deg(tilt.rollDeg)}`,
-      hint: `let it fall ${tilt.rollDeg >= 0 ? 'right' : 'left'} to ${deg(tilt.rollDeg)} (±${tilt.seRoll.toFixed(1)}°, ${tilt.samples} skyline columns)`,
-      apply: () => setCurrentPose({ roll: tilt.rollDeg }),
-    });
-  }
-  // Say what the tilt measurement found even when it is not offered, so an
-  // absent axis is never a mystery.
-  autoTiltNote = Number.isFinite(tilt.pitchDeg)
-    ? `Tilt measured over ${tilt.samples} skyline columns: pitch ${deg(tilt.pitchDeg)} ±${tilt.sePitch.toFixed(1)}°, roll ${deg(tilt.rollDeg)} ±${tilt.seRoll.toFixed(1)}°.`
-    : `No usable skyline in the compared band (${tilt.samples} columns) — pitch and roll could not be measured here.`;
-  // Why there is nothing to do, when there is nothing to do.
-  autoIntro = autoSteps.length
-    ? ''
-    : isConfident(proposal)
-      ? `Already aligned — the photo matches the vector world to within a degree (${proposal.method} match ${pct}). Nothing to fix.`
-      : `No confident match (${proposal.method} ${pct}) — too little shared structure here (open sky, trees, night). The photo is unchanged; try another picture of the sequence, or align by eye.`;
-  renderAutoStep();
-}
-
-// Which axis is being checked, at a glance: a chip row (current one in the
-// brand colour), a headline, and the axis named on the buttons themselves —
-// "Apply Yaw −2.0°" leaves no doubt about what is about to change.
-function renderAxisChips() {
-  autoAxes.replaceChildren();
-  for (const axis of ['Yaw', 'Pitch', 'Roll']) {
-    const i = autoSteps.findIndex((st) => st.axis === axis);
-    const chip = document.createElement('span');
-    chip.className = 'axis-chip';
-    let mark = '';
-    if (i === -1) { chip.classList.add('axis-none'); mark = ' —'; }
-    else if (autoApplied.some((l) => l.startsWith(axis))) { chip.classList.add('axis-done'); mark = ' ✔'; }
-    else if (autoSkipped.includes(axis)) { chip.classList.add('axis-skipped'); mark = ' ✕'; }
-    else if (i === autoStep) chip.classList.add('axis-current');
-    chip.textContent = axis + mark;
-    autoAxes.append(chip);
-  }
-}
-
-function setVerdict(headline, body) {
-  autoVerdict.replaceChildren();
-  if (headline) {
-    const h = document.createElement('div');
-    h.className = 'auto-head';
-    h.textContent = headline;
-    autoVerdict.append(h);
-  }
-  const b = document.createElement('div');
-  b.textContent = body;
-  autoVerdict.append(b);
-}
-
-function renderAutoStep() {
-  const step = autoSteps[autoStep];
-  renderAxisChips();
-  const done = autoApplied.length ? `Fixed: ${autoApplied.join(' · ')}. ` : '';
-  const skipped = autoSkipped.length ? `Skipped: ${autoSkipped.join(', ')}. ` : '';
-  if (step) {
-    setVerdict(
-      `▶ ${step.axis} — step ${autoStep + 1} of ${autoSteps.length}`,
-      `${step.hint}. ${done}${skipped}Top band: vector world · bottom band: photo.`
-    );
-    autoApply.textContent = `Apply ${step.label}`;
-    autoSkip.textContent = `Skip ${step.axis}`;
-    autoApply.disabled = false;
-    autoSkip.disabled = false;
-    return;
-  }
-  autoApply.textContent = 'Apply';
-  autoSkip.textContent = 'Skip';
-  autoApply.disabled = true;
-  autoSkip.disabled = true;
-  if (!autoSteps.length) {
-    setVerdict('Nothing to change', `${autoIntro} ${autoTiltNote}`);
-    return;
-  }
-  if (autoApplied.length) {
-    setVerdict('Done', `${done}${skipped}${autoTiltNote} The bands should line up now; fine-tune with the ring if needed.`);
-  } else {
-    setVerdict('Nothing changed', `Every suggestion was skipped (${autoSkipped.join(', ')}). The photo is as it was.`);
-  }
-}
-
-autoBtn.addEventListener('click', runAutoFix);
+for (const b of autoButtons) b.el.addEventListener('click', () => fixAxis(b.axis));
 autoApply.addEventListener('click', () => {
-  const step = autoSteps[autoStep];
-  if (!step) return;
-  step.apply();
-  autoApplied.push(step.label);
-  autoStep++;
-  syncPosePanel(); // redraws the bands at the new pose
+  const pending = autoPending;
+  if (!pending) return;
+  pending.apply();
+  syncPosePanel(); // redraws the bands under the new pose
   syncRing();
-  renderAutoStep();
+  // Re-measure the same axis so the result is verified, not assumed.
+  const axis = pending.label.split(' ')[0];
+  drawAutoPreview();
+  measureAxis(axis);
+  if (!autoPending) setVerdict(`${axis} applied`, `${pending.label} applied — re-measured and now within the noise. The bands should line up.`);
 });
-autoSkip.addEventListener('click', () => {
-  const step = autoSteps[autoStep];
-  if (!step) return;
-  autoSkipped.push(step.axis);
-  autoStep++;
-  renderAutoStep();
-});
-document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; removeStrips(); });
-// A different picture means a different stand-point: the scan no longer applies.
+document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; removeStrips(); autoPending = null; });
 onPictureChanged(() => { autoScan = null; autoPreview.hidden = true; removeStrips(); });
 
 document.getElementById('pose-reset').addEventListener('click', () => {

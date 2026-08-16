@@ -342,18 +342,13 @@ body {
   color: rgba(255, 255, 255, 0.85);
 }
 
-#pose-auto {
+/* One auto-fix button per rotation axis (#142). */
+#auto-buttons button {
   background: rgb(52, 54, 60);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 12px;
-  cursor: pointer;
 }
 
-#pose-auto:hover:not(:disabled) { background: rgb(66, 68, 76); }
-#pose-auto:disabled { color: rgba(255, 255, 255, 0.4); cursor: default; }
+#auto-buttons button:hover:not(:disabled) { background: rgb(66, 68, 76); }
+#auto-buttons button:disabled { color: rgba(255, 255, 255, 0.4); cursor: default; }
 
 /* Rotation chips (#106/#111). */
 #flip-pano {

@@ -38,7 +38,13 @@
       <div class="pose-row" id="pose-readout">
         <span id="pose-rot-val">Pitch 0° · Roll 0° · Yaw 0°</span>
       </div>
-      <button type="button" id="pose-auto" title="Compare this photo with the vector world and propose a yaw correction (#142)">🧭 Auto-fix orientation</button>
+      <!-- Auto-fix, one button per rotation axis (#142): each measures what
+           is still wrong on ITS axis and proposes only that. -->
+      <div class="pose-actions" id="auto-buttons">
+        <button type="button" id="auto-yaw" title="Measure the yaw against the vector world (which way the photo faces)">🧭 Yaw</button>
+        <button type="button" id="auto-pitch" title="Measure the pitch against the vector world (tilted up or down)">🧭 Pitch</button>
+        <button type="button" id="auto-roll" title="Measure the roll against the vector world (falling left or right)">🧭 Roll</button>
+      </div>
       <div class="pose-actions">
         <button type="button" id="pose-reset">Reset</button>
       </div>
@@ -51,11 +57,9 @@
     <div id="auto-preview" hidden>
       <!-- Which axis is being checked, at a glance: current one highlighted,
            done ✔, skipped ✕, nothing-proposed dimmed. -->
-      <div id="auto-axes" role="status"></div>
       <div id="auto-verdict"></div>
       <div class="pose-actions">
         <button type="button" id="auto-apply">Apply</button>
-        <button type="button" id="auto-skip">Skip</button>
         <button type="button" id="auto-dismiss">Close</button>
       </div>
     </div>
