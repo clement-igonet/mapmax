@@ -12,18 +12,22 @@
 #   systemctl --user daemon-reload && systemctl --user enable --now mapmax-stack.service
 # Deploys just: systemctl --user restart mapmax-stack.service (see deploy-confinia.sh).
 [Unit]
-Description=MapMax podman-compose stack (edge+web+web-staging+web-sandbox)
+Description=MapMax podman-compose stack (edge+edge-sandbox+web+web-staging+web-sandbox)
 After=default.target
 
 [Service]
 Type=simple
 WorkingDirectory=%h/projects/mapmax
-# 1PESI band (platform PR #10): 14000 is the home port; the compose file
-# dual-publishes legacy 8087 until the platform decommissions it.
+# 1PESI band, environment fixed by the E digit: PROD 14000, STAGING 14300,
+# SANDBOX 14400. These are pinned HERE as well as in the compose defaults
+# because this unit's environment overrides the compose file — during the
+# 14xxx migration that is exactly how 14000 silently failed to bind.
 Environment=WEB_PORT=14000
+Environment=STAGING_PORT=14300
+Environment=SANDBOX_PORT=14400
 Environment=XDG_RUNTIME_DIR=/run/user/1002
 ExecStartPre=-/usr/bin/podman-compose down
-ExecStart=/usr/bin/podman-compose up edge web web-staging web-sandbox
+ExecStart=/usr/bin/podman-compose up edge edge-sandbox web web-staging web-sandbox
 ExecStop=/usr/bin/podman-compose down
 Restart=always
 RestartSec=5
