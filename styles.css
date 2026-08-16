@@ -275,6 +275,13 @@ body {
   gap: 5px;
 }
 
+/* An explicit `display` beats the `hidden` attribute — without this the
+   preview never collapses, and the taller panel hits the #100 rasterization
+   wall (the chips below it stop painting). */
+#auto-preview[hidden] {
+  display: none;
+}
+
 #auto-strips {
   display: block;
   width: 100%;

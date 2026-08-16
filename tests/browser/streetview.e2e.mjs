@@ -86,7 +86,10 @@ const chrome = await page.evaluate(() => ({
   // Read-oriented app: no auth, no server write-back — assert their ABSENCE.
   noAuth: !document.getElementById('auth-signin') && !document.getElementById('pose-connect') && !document.getElementById('pose-save') && !document.getElementById('pose-token'),
   // #142: the auto-fix entry ships in the Adjust drawer, its preview idle.
-  autoFixReady: !!document.getElementById('pose-auto') && document.getElementById('auto-preview')?.hidden === true,
+  // Computed display, not just the attribute: a stray `display` rule silently
+  // defeats [hidden] and inflates the drawer past what the GPU paints (#100).
+  autoFixReady: !!document.getElementById('pose-auto')
+    && getComputedStyle(document.getElementById('auto-preview')).display === 'none',
 }));
 assert.ok(chrome.topbar, 'header bar missing (#111)');
 assert.match(chrome.brand, /MapMax/, 'brand missing from the header (#111)');
