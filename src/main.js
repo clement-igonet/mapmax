@@ -443,23 +443,40 @@ function measureAxis(axis) {
       setVerdict(`Yaw ${degTxt(p.deltaDeg)}`, `Turn the photo ${degTxt(p.deltaDeg)} (${p.method} match ${pct}). Top band: vector world · bottom band: photo.`);
     }
   } else {
-    // Residual tilt of the bands as they stand: a delta to add to the pose.
+    // A tilt can only be read once the bands line up HORIZONTALLY: with a yaw
+    // error still present, the skyline difference is dominated by that offset
+    // and its projection onto sin(a) comes back as a phantom roll — which is
+    // why fixing "roll" used to swing the photo sideways (#142). So measure
+    // the residual yaw first and align the band for the measurement only,
+    // without touching the pose.
+    const yawFix = proposeYawDelta(photo, world);
+    const mustAlign = isConfident(yawFix) && Math.abs(yawFix.deltaDeg) >= 0.5;
+    if (!isConfident(yawFix) && Math.abs(yawFix.deltaDeg || 0) >= 0.5) {
+      setVerdict(`${axis} — align the yaw first`, 'The two bands are not horizontally aligned and the yaw could not be measured confidently here, so a tilt reading would be meaningless. Fix the yaw (by hand or elsewhere in the sequence), then measure again.');
+      autoApply.disabled = true;
+      autoApply.textContent = 'Apply';
+      return;
+    }
+    const aligned = mustAlign
+      ? stripProfiles(poseStrip(posedPhotoStrip(), { dYawDeg: -yawFix.deltaDeg, centreAz: currentPanoYaw(), bandDeg: BAND_DEG }))
+      : photo;
     const n = world.skyline.length;
-    const centre = currentPanoYaw();
+    const centre = currentPanoYaw() + (mustAlign ? yawFix.deltaDeg : 0);
     const diff = new Float32Array(n);
     const relAz = new Float32Array(n);
     for (let j = 0; j < n; j++) {
-      diff[j] = (photo.skyline[j] - world.skyline[j]) * BAND_DEG;
+      diff[j] = (aligned.skyline[j] - world.skyline[j]) * BAND_DEG;
       relAz[j] = ((((((j * 360) / n - centre) % 360) + 540) % 360) - 180);
     }
     const t = fitTilt(diff, relAz);
+    const yawNote = mustAlign ? ` Measured after aligning the bands by ${degTxt(yawFix.deltaDeg)} of yaw.` : '';
     const coef = axis === 'Pitch' ? t.pitchDeg : t.rollDeg;
     const se = axis === 'Pitch' ? t.sePitch : t.seRoll;
     const pose = getCurrentPose() || { pitch: 0, roll: 0 };
     if (!Number.isFinite(coef)) {
-      setVerdict(`${axis} — not measurable`, `Only ${t.samples} usable skyline columns in the compared band; the roofline is hidden here. The photo is unchanged.`);
+      setVerdict(`${axis} — not measurable`, `Only ${t.samples} usable skyline columns in the compared band; the roofline is hidden here. The photo is unchanged.${yawNote}`);
     } else if (!axisSignificant(coef, se)) {
-      setVerdict(`${axis} — within the noise`, `Measured ${degTxt(coef)} ±${se.toFixed(1)}° over ${t.samples} skyline columns — not distinguishable from zero. The photo is unchanged.`);
+      setVerdict(`${axis} — within the noise`, `Measured ${degTxt(coef)} ±${se.toFixed(1)}° over ${t.samples} skyline columns — not distinguishable from zero. The photo is unchanged.${yawNote}`);
     } else {
       const target = (axis === 'Pitch' ? pose.pitch : pose.roll) + coef;
       const how = axis === 'Pitch'
@@ -469,7 +486,7 @@ function measureAxis(axis) {
         label: `${axis} ${degTxt(coef)}`,
         apply: () => setCurrentPose(axis === 'Pitch' ? { pitch: target } : { roll: target }),
       };
-      setVerdict(`${axis} ${degTxt(coef)}`, `${how}, ±${se.toFixed(1)}° over ${t.samples} skyline columns.`);
+      setVerdict(`${axis} ${degTxt(coef)}`, `${how}, ±${se.toFixed(1)}° over ${t.samples} skyline columns.${yawNote}`);
     }
   }
   autoApply.disabled = !autoPending;
@@ -487,7 +504,11 @@ async function fixAxis(axis) {
       const world = await scanWorldStrip(map, ps, {
         setBlend,
         blendAfter: sliderToBlend(blendSlider.value),
-        onProgress: (p) => { poseStatus.textContent = `Scanning the vector world… ${Math.round(p * 100)}%`; },
+        onProgress: (p, phase) => {
+          poseStatus.textContent = phase === 'warming'
+            ? `Loading the vector world around this spot… ${Math.round(p * 100)}%`
+            : `Scanning the vector world… ${Math.round(p * 100)}%`;
+        },
       });
       const baseYaw = currentPanoYaw();
       autoScan = { world, photo: await photoStrip(url, baseYaw), baseYaw, picId: currentPic.id };

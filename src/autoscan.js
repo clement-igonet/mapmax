@@ -24,6 +24,24 @@ export const SCAN_BINS = 180; // 2° per bin — 1° adds time, not accuracy
 export const BAND_DEG = 60;
 export const STRIP_H = 96; // rows per strip — 0.6° each over the 60° band
 
+// Wait until the map has nothing left to load or draw, capped by a budget so
+// a slow network cannot hang the scan. Without this the spin outruns tile
+// loading and whole sectors of the world come back empty (#142).
+const settle = (map, budgetMs) => new Promise((resolve) => {
+  if (map.loaded?.() && map.areTilesLoaded?.()) { resolve(); return; }
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    map.off('idle', finish);
+    clearTimeout(timer);
+    resolve();
+  };
+  const timer = setTimeout(finish, budgetMs);
+  map.on('idle', finish);
+  map.triggerRepaint();
+});
+
 // Draw the next rendered frame through `copy` before the browser composites
 // it away — the buffer is only guaranteed valid inside the render event.
 const captureNextFrame = (map, copy) => new Promise((resolve) => {
@@ -66,10 +84,21 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     const bandH = Math.max(2, Math.round(BAND_DEG * pxPerDegY));
     const sx = Math.round(canvas.width / 2 - sliceW / 2);
     const sy = Math.round(canvas.height / 2 - bandH / 2);
+    const faceBin = (j) => ps.look(((((j * 360) / bins - ps.yaw) % 360) + 540) % 360 - 180, 0);
+    // Warm-up lap: request every bearing's tiles first, then let the map go
+    // quiet once. Rotating about a fixed point reuses almost the same tiles,
+    // so the capture lap then needs only a short settle per bin.
+    for (let j = 0; j < bins; j += 4) {
+      faceBin(j);
+      await new Promise((r) => requestAnimationFrame(() => r()));
+      if (onProgress) onProgress((0.35 * j) / bins, 'warming');
+    }
+    await settle(map, 8000);
     for (let j = 0; j < bins; j++) {
-      ps.look(((((j * 360) / bins - ps.yaw) % 360) + 540) % 360 - 180, 0);
+      faceBin(j);
+      await settle(map, 400);
       await captureNextFrame(map, () => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
-      if (onProgress && j % 10 === 0) onProgress(j / bins);
+      if (onProgress && j % 10 === 0) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
     }
     return ctx.getImageData(0, 0, bins, STRIP_H);
   } finally {
