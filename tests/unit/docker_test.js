@@ -25,6 +25,13 @@ Deno.test('docker-compose.yml defines edge + web + containerized-Chromium e2e se
   assert(dc.includes('edge:'), 'edge service missing');
   assert(dc.includes('caddy'), 'edge must run Caddy');
   assert(dc.includes('127.0.0.1:${WEB_PORT:-14000}:80'), 'edge must bind the 14xxx band port for the platform reverse-proxy');
+  // 1PESI environment digits: PROD X000, STAGING X300, SANDBOX X400.
+  assert(dc.includes('127.0.0.1:${STAGING_PORT:-14300}:14300'), 'staging must have its own edge listener on 14300');
+  assert(dc.includes('127.0.0.1:${SANDBOX_PORT:-14400}:80'), 'sandbox must be published on 14400');
+  // Platform RULES §6: a sandbox is NEVER proxied through the production edge.
+  const edgeBlock = dc.slice(dc.indexOf('  edge:'), dc.indexOf('  edge-sandbox:'));
+  assert(!edgeBlock.includes('14400'), 'the sandbox port must not be published by the production edge');
+  assert(dc.includes('Caddyfile.sandbox'), 'the sandbox edge must use its own Caddyfile');
   assert(!dc.includes(':8087:80'), 'legacy 8087 must stay retired — no publish line (1PESI migration complete)');
   assert(dc.includes('docker/Caddyfile'), 'edge must mount the mapmax Caddyfile');
 });

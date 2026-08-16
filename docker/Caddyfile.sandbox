@@ -1,0 +1,16 @@
+# MapMax SANDBOX edge — a separate caddy from production (platform RULES §6):
+# a sandbox is never proxied through the production edge, so it gets its own
+# container and its own port (1PESI SANDBOX digit → 14400).
+#
+#   sandbox.mapmax.confinia.io → web-sandbox
+#
+# No Host matching: everything reaching this listener is the sandbox. The
+# production edge keeps serving the sandbox hostname on 14000 (dual-publish)
+# until the platform flips its upstream over.
+{
+	auto_https off
+}
+
+:80 {
+	reverse_proxy web-sandbox:80
+}
