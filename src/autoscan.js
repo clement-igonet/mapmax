@@ -18,6 +18,15 @@
 import { edgeProfile, skylineProfile, tiltRowShift } from './autoyaw.js';
 
 export const SCAN_BINS = 180; // 2° per bin — 1° adds time, not accuracy
+
+// A scan drives the camera for several seconds. Anything that moves the
+// photosphere meanwhile (walking to a neighbour, a deep link, Esc) fights it —
+// and the camera restore at the end would snap the view back to the picture
+// you just left, stranding the plugin outside its sphere. So the scan
+// publishes its state (navigation ignores clicks while it runs) and aborts the
+// moment its picture is no longer the current one.
+let scanning = false;
+export const isScanning = () => scanning;
 // Vertical band around the horizon. It must contain the ROOFLINE: in a street
 // the sky/building edge sits 30–50° up, so a narrow band saw only façade and
 // the tilt fit had nothing to lock onto (#142).
@@ -64,7 +73,7 @@ function scratch(w, h) {
  * Restores the camera, field of view and blend it found, whatever happens.
  * @returns {Promise<ImageData>} width = bins, height = STRIP_H
  */
-export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blendAfter = 0.5, onProgress } = {}) {
+export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blendAfter = 0.5, onProgress, shouldAbort } = {}) {
   const canvas = map.getCanvas();
   const out = scratch(bins, STRIP_H);
   const ctx = out.getContext('2d', { willReadFrequently: true });
@@ -76,11 +85,14 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
   // tile budget suspends the vector layers (#11) — and then there would be no
   // buildings left to capture.
   const scanBlend = Math.min(blendAfter, 0.98);
+  let aborted = false;
+  const abortRequested = () => (aborted = aborted || !!shouldAbort?.());
   const captureBin = async (copy) => {
     setBlend(0);
     await captureNextFrame(map, copy);
     setBlend(scanBlend);
   };
+  scanning = true;
   try {
     setBlend(scanBlend);
     ps.look(0, -savedPitch); // level with the horizon: the band we compare
@@ -100,20 +112,25 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     // quiet once. Rotating about a fixed point reuses almost the same tiles,
     // so the capture lap then needs only a short settle per bin.
     for (let j = 0; j < bins; j += 4) {
+      if (abortRequested()) break;
       faceBin(j);
       await new Promise((r) => requestAnimationFrame(() => r()));
       if (onProgress) onProgress((0.35 * j) / bins, 'warming');
     }
-    await settle(map, 8000);
-    for (let j = 0; j < bins; j++) {
+    if (!abortRequested()) await settle(map, 8000);
+    for (let j = 0; j < bins && !abortRequested(); j++) {
       faceBin(j);
       await settle(map, 400);
       await captureBin(() => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
       if (onProgress && j % 10 === 0) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
     }
+    if (aborted) throw new Error('scan cancelled — the view moved to another picture');
     return ctx.getImageData(0, 0, bins, STRIP_H);
   } finally {
-    ps.look(((((savedYaw - ps.yaw) % 360) + 540) % 360) - 180, savedPitch - ps.pitch);
+    scanning = false;
+    // Only reclaim the camera if it is still ours: after an abort it belongs
+    // to whatever moved the view, and restoring would strand the plugin.
+    if (!aborted) ps.look(((((savedYaw - ps.yaw) % 360) + 540) % 360) - 180, savedPitch - ps.pitch);
     setBlend(blendAfter); // back to the mix the user was looking at
   }
 }

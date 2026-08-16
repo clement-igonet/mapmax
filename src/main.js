@@ -526,9 +526,11 @@ async function fixAxis(axis) {
   try {
     if (!autoScan || autoScan.picId !== currentPic.id) {
       poseStatus.textContent = `Scanning the vector world for ${axis} — the view spins once…`;
+      const scanPicId = currentPic.id;
       const world = await scanWorldStrip(map, ps, {
         setBlend,
         blendAfter: sliderToBlend(blendSlider.value),
+        shouldAbort: () => currentPic?.id !== scanPicId || !isStreetMode(),
         onProgress: (p, phase) => {
           poseStatus.textContent = phase === 'warming'
             ? `Loading the vector world around this spot… ${Math.round(p * 100)}%`
