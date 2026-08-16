@@ -328,6 +328,8 @@ onPictureChanged((pic) => { if (!pic) leaveStreetUI(); });
 // compass can't see the sun (evening rides, narrow alleys). Persists per
 // sequence and re-renders immediately.
 document.getElementById('flip-pano').addEventListener('click', () => {
+  autoYawAligned = false; // a 180° flip voids any measured alignment (#142)
+  updateAxisButtons();
   const applied = flipCurrentPano();
   if (applied != null) status(`Photo rotated ${applied ? '180°' : 'back to metadata orientation'} for this sequence.`);
   syncPosePanel();
@@ -372,6 +374,19 @@ const norm360 = (d) => ((d % 360) + 360) % 360;
 const currentPanoYaw = () => norm360((currentPic?.heading || 0) + (getCurrentPose()?.yaw || 0));
 let autoScan = null; // { world, photo, baseYaw, picId } — one stand-point
 let autoPending = null; // the correction the Apply button would make
+// A tilt can only be read from bands that line up horizontally, so Pitch and
+// Roll stay locked until the yaw is measured and found aligned (#142).
+let autoYawAligned = false;
+
+function updateAxisButtons() {
+  for (const b of autoButtons) {
+    if (b.axis === 'Yaw') continue;
+    b.el.disabled = !autoYawAligned;
+    b.el.title = autoYawAligned
+      ? `Measure the ${b.axis.toLowerCase()} against the vector world`
+      : `Fix the yaw first — a ${b.axis.toLowerCase()} reading is meaningless while the two bands are not aligned`;
+  }
+}
 
 // The strips canvas exists only while the preview is open: an idle canvas in
 // the overlay was enough to upset rasterization on the affected GPU (#100).
@@ -423,7 +438,10 @@ function setVerdict(headline, body) {
   autoVerdict.append(h, b);
 }
 
-const setAutoBusy = (busy) => { for (const b of autoButtons) b.el.disabled = busy; };
+const setAutoBusy = (busy) => {
+  for (const b of autoButtons) b.el.disabled = busy;
+  if (!busy) updateAxisButtons();
+};
 const degTxt = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}°`;
 
 // Measure ONE axis on the current bands and stage its correction.
@@ -434,13 +452,15 @@ function measureAxis(axis) {
   if (axis === 'Yaw') {
     const p = proposeYawDelta(photo, world);
     const pct = Number.isFinite(p.score) ? `${Math.round(p.score * 100)}%` : 'n/a';
+    autoYawAligned = isConfident(p) && Math.abs(p.deltaDeg) < 0.5;
+    updateAxisButtons();
     if (!isConfident(p)) {
-      setVerdict('Yaw — no confident match', `${p.method} match ${pct}: too little shared structure here (open sky, trees, night). The photo is unchanged.`);
+      setVerdict('Yaw — no confident match', `${p.method} match ${pct}: too little shared structure here (open sky, trees, night). The photo is unchanged, and Pitch/Roll stay locked — a tilt cannot be read from bands that are not aligned.`);
     } else if (Math.abs(p.deltaDeg) < 0.5) {
-      setVerdict('Yaw — already aligned', `Within half a degree of the vector world (${p.method} match ${pct}). Nothing to change.`);
+      setVerdict('Yaw — already aligned', `Within half a degree of the vector world (${p.method} match ${pct}). Nothing to change here; Pitch and Roll are now unlocked.`);
     } else {
       autoPending = { label: `Yaw ${degTxt(p.deltaDeg)}`, apply: () => setCurrentPose({ yaw: getCurrentPose().yaw + p.deltaDeg }) };
-      setVerdict(`Yaw ${degTxt(p.deltaDeg)}`, `Turn the photo ${degTxt(p.deltaDeg)} (${p.method} match ${pct}). Top band: vector world · bottom band: photo.`);
+      setVerdict(`Yaw ${degTxt(p.deltaDeg)}`, `Turn the photo ${degTxt(p.deltaDeg)} (${p.method} match ${pct}). Apply it to unlock Pitch and Roll. Top band: vector world · bottom band: photo.`);
     }
   } else {
     // A tilt can only be read once the bands line up HORIZONTALLY: with a yaw
@@ -539,7 +559,15 @@ autoApply.addEventListener('click', () => {
   if (!autoPending) setVerdict(`${axis} applied`, `${pending.label} applied — re-measured and now within the noise. The bands should line up.`);
 });
 document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; removeStrips(); autoPending = null; });
-onPictureChanged(() => { autoScan = null; autoPreview.hidden = true; removeStrips(); });
+onPictureChanged(() => {
+  autoScan = null;
+  autoPending = null;
+  autoYawAligned = false;
+  updateAxisButtons();
+  autoPreview.hidden = true;
+  removeStrips();
+});
+updateAxisButtons();
 
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });

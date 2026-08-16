@@ -89,7 +89,11 @@ const chrome = await page.evaluate(() => ({
   // Computed display, not just the attribute: a stray `display` rule silently
   // defeats [hidden] and inflates the drawer past what the GPU paints (#100).
   autoFixReady: ['auto-yaw', 'auto-pitch', 'auto-roll'].every((id) => !!document.getElementById(id))
-    && getComputedStyle(document.getElementById('auto-preview')).display === 'none',
+    && getComputedStyle(document.getElementById('auto-preview')).display === 'none'
+    // Pitch/Roll stay locked until the yaw is measured and aligned (#142).
+    && document.getElementById('auto-pitch').disabled === true
+    && document.getElementById('auto-roll').disabled === true
+    && document.getElementById('auto-yaw').disabled === false,
 }));
 assert.ok(chrome.topbar, 'header bar missing (#111)');
 assert.match(chrome.brand, /MapMax/, 'brand missing from the header (#111)');
