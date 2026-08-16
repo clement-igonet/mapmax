@@ -10,6 +10,9 @@ issue/PR touch. Environments: [www](https://www.mapmax.confinia.io) ·
 
 | Issue | Title | PR(s) | State |
 |---|---|---|---|
+| [#146](https://github.com/clement-igonet/mapmax/issues/146) | Sandbox branch deploys bounce production (~1 min 502 on www) | — | cause of the platform owner's 09:50 UTC observation; fix = own systemd unit for the sandbox stack now that `edge-sandbox` exists |
+| [#142](https://github.com/clement-igonet/mapmax/issues/142) | Auto-fix orientation (yaw/pitch/roll vs the vector world) | [#143](https://github.com/clement-igonet/mapmax/pull/143) (draft) | 3 per-axis buttons; Pitch/Roll locked until the yaw is aligned (measured or confirmed by eye); tile warm-up before scanning; photo stays visible; on sandbox |
+| [#146](https://github.com/clement-igonet/mapmax/issues/146) | Sandbox branch deploys bounce production (~1 min 502 on www) | — | cause of the platform owner's 09:50 UTC observation; fix = own systemd unit for the sandbox stack now that `edge-sandbox` exists |
 | [#103](https://github.com/clement-igonet/mapmax/issues/103) | Adopt stock MapLibre ≥ v6.20 (with #8057) on all envs | — | promotion path decided; **blocked upstream** (latest v6.1.0, [maplibre#8057](https://github.com/maplibre/maplibre-gl-js/issues/8057) open) |
 | [#94](https://github.com/clement-igonet/mapmax/issues/94) | Sandbox runs the #8057 (position-only LOD) MapLibre build | [#89](https://github.com/clement-igonet/mapmax/pull/89) (harness) | build live on [sandbox](https://sandbox.mapmax.confinia.io); baseline −26% tiles; promotion now via #103 (stock ≥ v6.20), fork stays sandbox-only |
 | [#90](https://github.com/clement-igonet/mapmax/issues/90) | Sandbox reliably online + branch/PR deploys | — | stack is a systemd user service under `mapmax` (see MOVE.md); **branch→sandbox deploys now CI-driven** ([#117](https://github.com/clement-igonet/mapmax/pull/117), R14: `workflow_dispatch` on any ref, sandbox-only off main) |
