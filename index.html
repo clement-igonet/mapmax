@@ -38,6 +38,18 @@
       <div class="pose-row" id="pose-readout">
         <span id="pose-rot-val">Pitch 0° · Roll 0° · Yaw 0°</span>
       </div>
+      <button type="button" id="pose-auto" title="Compare this photo with the vector world and propose a yaw correction (#142)">🧭 Auto-fix orientation</button>
+      <!-- Auto-fix preview (#142): the vector world on top, the photo below,
+           both unrolled over the same 360° of azimuth — a yaw error reads as
+           a horizontal offset between the two bands. -->
+      <div id="auto-preview" hidden>
+        <canvas id="auto-strips" width="180" height="104"></canvas>
+        <div id="auto-verdict"></div>
+        <div class="pose-actions">
+          <button type="button" id="auto-apply">Apply</button>
+          <button type="button" id="auto-dismiss">Dismiss</button>
+        </div>
+      </div>
       <div class="pose-actions">
         <button type="button" id="pose-reset">Reset</button>
       </div>

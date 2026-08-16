@@ -16,6 +16,8 @@ import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
+import { photoStrip, rollStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
+import { isConfident, proposeYawDelta } from './autoyaw.js';
 import { setupLicenseGate } from './licensegate.js';
 
 // The sources this build browses (#112) — Panoramax is the backbone (first
@@ -62,6 +64,10 @@ export const map = new maplibregl.Map({
   // Keep the camera free of the ground plane so the photosphere plugin can sit
   // the eye at a fixed elevation (SPECIFICATIONS.md §2.2).
   centerClampedToGround: false,
+  // The orientation auto-fix (#142) reads the rendered canvas back to build an
+  // equirect of the vector world; without this the buffer is cleared before we
+  // can sample it.
+  preserveDrawingBuffer: true,
   hash: true,
 });
 
@@ -348,8 +354,86 @@ function syncPosePanel() {
   if (!pose || posePanel.hidden) return;
   poseRotVal.textContent =
     `Pitch ${pose.pitch.toFixed(1)}° · Roll ${pose.roll.toFixed(1)}° · Yaw ${yawToSigned(pose.yaw).toFixed(0)}°`;
+  drawAutoPreview(); // any yaw change re-rolls the photo band (#142)
 }
 onPictureChanged(() => syncPosePanel());
+
+// --- Auto-fix orientation (#142) --------------------------------------------
+// Unroll the vector world and the panorama over the SAME 360° of azimuth: a
+// yaw error is then just a horizontal offset between the two bands, which a
+// circular correlation reads off (autoyaw.js). Everything stays local (#111).
+const autoBtn = document.getElementById('pose-auto');
+const autoPreview = document.getElementById('auto-preview');
+const autoStrips = document.getElementById('auto-strips');
+const autoVerdict = document.getElementById('auto-verdict');
+const autoApply = document.getElementById('auto-apply');
+const norm360 = (d) => ((d % 360) + 360) % 360;
+// The world azimuth the image centre currently claims to face.
+const currentPanoYaw = () => norm360((currentPic?.heading || 0) + (getCurrentPose()?.yaw || 0));
+let autoScan = null; // { world, photo, baseYaw, proposal } — one stand-point
+
+// Redraw both bands for the CURRENT pose: the photo band is rolled by however
+// much the yaw moved since the scan, so every correction (auto, ring, flip)
+// shows up as the bands sliding into — or out of — alignment.
+function drawAutoPreview() {
+  if (!autoScan || autoPreview.hidden) return;
+  const ctx = autoStrips.getContext('2d');
+  ctx.clearRect(0, 0, autoStrips.width, autoStrips.height);
+  ctx.putImageData(autoScan.world, 0, 0);
+  ctx.putImageData(
+    rollStrip(autoScan.photo, autoScan.baseYaw - currentPanoYaw()),
+    0,
+    autoStrips.height - autoScan.photo.height
+  );
+}
+
+async function runAutoFix() {
+  const ps = _photosphere();
+  const url = currentPic && originalImageUrl(currentPic);
+  if (!ps || !url) return;
+  autoBtn.disabled = true;
+  autoPreview.hidden = true;
+  try {
+    poseStatus.textContent = 'Scanning the vector world — the view spins once…';
+    const world = await scanWorldStrip(map, ps, {
+      setBlend,
+      blendAfter: sliderToBlend(blendSlider.value),
+      onProgress: (p) => { poseStatus.textContent = `Scanning the vector world… ${Math.round(p * 100)}%`; },
+    });
+    const baseYaw = currentPanoYaw();
+    const photo = await photoStrip(url, baseYaw);
+    const proposal = proposeYawDelta(stripProfiles(photo), stripProfiles(world));
+    autoScan = { world, photo, baseYaw, proposal };
+    autoPreview.hidden = false;
+    drawAutoPreview();
+    const pct = Number.isFinite(proposal.score) ? `${Math.round(proposal.score * 100)}%` : 'n/a';
+    const sign = proposal.deltaDeg >= 0 ? '+' : '';
+    autoVerdict.textContent = isConfident(proposal)
+      ? `Top: vector world · bottom: photo. Proposed ${sign}${proposal.deltaDeg.toFixed(0)}° (${proposal.method} match ${pct}).`
+      : `Top: vector world · bottom: photo. No confident match (${proposal.method} ${pct}) — align by eye, or try another picture of the sequence.`;
+    autoApply.disabled = !isConfident(proposal);
+    poseStatus.textContent = POSE_STATUS_DEFAULT;
+  } catch (err) {
+    console.warn('auto-fix scan failed', err);
+    poseStatus.textContent = `Scan failed: ${err.message || 'the panorama could not be read'}.`;
+  } finally {
+    autoBtn.disabled = false;
+  }
+}
+
+autoBtn.addEventListener('click', runAutoFix);
+autoApply.addEventListener('click', () => {
+  if (!autoScan || !isConfident(autoScan.proposal)) return;
+  setCurrentPose({ yaw: getCurrentPose().yaw + autoScan.proposal.deltaDeg });
+  autoScan.proposal = { ...autoScan.proposal, deltaDeg: 0 };
+  syncPosePanel(); // redraws the bands at the new yaw
+  syncRing();
+  autoVerdict.textContent = 'Applied — the bands should line up now. Fine-tune with the ring if needed.';
+  autoApply.disabled = true;
+});
+document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; });
+// A different picture means a different stand-point: the scan no longer applies.
+onPictureChanged(() => { autoScan = null; autoPreview.hidden = true; });
 
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
