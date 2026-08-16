@@ -184,3 +184,26 @@ Deno.test('tiltRowShift: inverts the fit model, so a corrected band can be re-re
   assertAlmostEquals(tiltRowShift(90, pitch, roll, band, H), (roll / band) * H, 1e-9);
   assertAlmostEquals(tiltRowShift(0, 0, 0, band, H), 0, 1e-9);
 });
+
+Deno.test('axisSignificant: each axis is judged against its own uncertainty (#142)', async () => {
+  const { axisSignificant, fitTilt, tiltIsUsable } = await import('../../src/autoyaw.js');
+  // Big and precise → offered. Big but uncertain → withheld. Precise but tiny → withheld.
+  assert(axisSignificant(-3.2, 0.4));
+  assert(!axisSignificant(-3.2, 2.0), 'a coefficient inside 2σ of its own error is noise');
+  assert(!axisSignificant(0.2, 0.01), 'below the practical floor, however precise');
+  assert(!axisSignificant(NaN, 0.1) && !axisSignificant(1, NaN));
+
+  // A scene that pins ROLL but not pitch must still offer the roll.
+  const rel = new Float32Array(N);
+  const d = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    rel[i] = (i * 360) / N - 180;
+    const a = (rel[i] * Math.PI) / 180;
+    d[i] = 4 * Math.sin(a); // pure roll, no pitch component
+  }
+  const f = fitTilt(d, rel);
+  assertAlmostEquals(f.rollDeg, 4, 1e-4);
+  assert(axisSignificant(f.rollDeg, f.seRoll), 'a clean roll must be offered');
+  assert(!axisSignificant(f.pitchDeg, f.sePitch), 'an absent pitch must not be invented');
+  assert(tiltIsUsable(f), 'one significant axis makes the fit usable');
+});

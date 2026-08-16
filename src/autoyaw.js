@@ -197,13 +197,44 @@ export function fitTilt(diffDeg, relAzDeg) {
     const fit = basis[0] * offsetDeg + basis[1] * pitchDeg + basis[2] * rollDeg;
     sq += (d - fit) ** 2;
   }
-  return { pitchDeg, rollDeg, offsetDeg, rms: Math.sqrt(sq / samples), samples };
+  // Standard error of each coefficient: s²·diag((XᵀX)⁻¹). This is what lets
+  // pitch and roll be judged SEPARATELY — a scene can pin one and not the
+  // other (a long straight street constrains roll far better than pitch).
+  const s2 = sq / Math.max(1, samples - 3);
+  const inv = invDiag3(M);
+  const se = inv ? inv.map((d) => Math.sqrt(Math.max(0, s2 * d))) : [NaN, NaN, NaN];
+  return {
+    pitchDeg, rollDeg, offsetDeg,
+    rms: Math.sqrt(sq / samples),
+    sePitch: se[1], seRoll: se[2],
+    samples,
+  };
 }
 
-// A tilt fit is only worth offering when the residual is small compared with
-// the correction itself — otherwise the "skyline" is noise (trees, cranes).
-export const tiltIsUsable = ({ pitchDeg, rollDeg, rms, samples }) =>
-  Number.isFinite(pitchDeg) && samples >= 24 && rms < Math.max(1.5, 0.8 * Math.hypot(pitchDeg, rollDeg));
+// Diagonal of the inverse of a symmetric 3×3 (cofactors / determinant).
+function invDiag3(m) {
+  const [a, b, c] = m[0];
+  const [d, e, f] = m[1];
+  const [g, h, i] = m[2];
+  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
+  return [(e * i - f * h) / det, (a * i - c * g) / det, (a * e - b * d) / det];
+}
+
+/**
+ * Is a single fitted axis worth offering? It must be big enough to matter AND
+ * stand clear of its own uncertainty — a 2σ signal. Reported per axis, so a
+ * confident roll is never withheld because the pitch was unmeasurable.
+ */
+export const axisSignificant = (coefDeg, seDeg, minDeg = 0.5) =>
+  Number.isFinite(coefDeg) && Math.abs(coefDeg) >= minDeg
+  && Number.isFinite(seDeg) && Math.abs(coefDeg) >= 2 * seDeg;
+
+// Enough skyline columns to fit at all, and at least one axis that clears its
+// own noise. (Per-axis decisions use axisSignificant directly.)
+export const tiltIsUsable = (t) =>
+  t.samples >= 24
+  && (axisSignificant(t.pitchDeg, t.sePitch) || axisSignificant(t.rollDeg, t.seRoll));
 
 // Vertical displacement (in strip rows) that a tilt produces at azimuth `a` —
 // the inverse of fitTilt's model. Re-rendering the photo band through this is

@@ -16,8 +16,8 @@ import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
-import { BAND_DEG, photoStrip, poseStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
-import { fitTilt, isConfident, proposeYawDelta, tiltIsUsable } from './autoyaw.js';
+import { BAND_DEG, SCAN_BINS, STRIP_H, photoStrip, poseStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
+import { axisSignificant, fitTilt, isConfident, proposeYawDelta } from './autoyaw.js';
 import { setupLicenseGate } from './licensegate.js';
 
 // The sources this build browses (#112) — Panoramax is the backbone (first
@@ -379,8 +379,8 @@ function ensureStrips() {
   if (autoStrips) return autoStrips;
   autoStrips = document.createElement('canvas');
   autoStrips.id = 'auto-strips';
-  autoStrips.width = 180;
-  autoStrips.height = 104;
+  autoStrips.width = SCAN_BINS;
+  autoStrips.height = STRIP_H * 2 + 8; // two bands with a hairline gap
   autoPreview.prepend(autoStrips);
   return autoStrips;
 }
@@ -466,6 +466,7 @@ let autoStep = 0;
 let autoApplied = [];
 let autoSkipped = [];
 let autoIntro = '';
+let autoTiltNote = '';
 
 function buildAutoSteps(proposal, tilt) {
   const pct = Number.isFinite(proposal.score) ? `${Math.round(proposal.score * 100)}%` : 'n/a';
@@ -482,24 +483,30 @@ function buildAutoSteps(proposal, tilt) {
       apply: () => setCurrentPose({ yaw: getCurrentPose().yaw + proposal.deltaDeg }),
     });
   }
-  if (tiltIsUsable(tilt)) {
-    if (Math.abs(tilt.pitchDeg) >= 0.5) {
-      autoSteps.push({
-        axis: 'Pitch',
-        label: `Pitch ${deg(tilt.pitchDeg)}`,
-        hint: `tip it ${tilt.pitchDeg >= 0 ? 'up' : 'down'} to ${deg(tilt.pitchDeg)} (skyline fit ±${tilt.rms.toFixed(1)}°)`,
-        apply: () => setCurrentPose({ pitch: tilt.pitchDeg }),
-      });
-    }
-    if (Math.abs(tilt.rollDeg) >= 0.5) {
-      autoSteps.push({
-        axis: 'Roll',
-        label: `Roll ${deg(tilt.rollDeg)}`,
-        hint: `let it fall ${tilt.rollDeg >= 0 ? 'right' : 'left'} to ${deg(tilt.rollDeg)} (skyline fit ±${tilt.rms.toFixed(1)}°)`,
-        apply: () => setCurrentPose({ roll: tilt.rollDeg }),
-      });
-    }
+  // Pitch and roll are judged SEPARATELY against their own uncertainty (#142):
+  // a long straight street pins the roll far better than the pitch, and a
+  // confident roll must not be withheld because the pitch is unmeasurable.
+  if (axisSignificant(tilt.pitchDeg, tilt.sePitch)) {
+    autoSteps.push({
+      axis: 'Pitch',
+      label: `Pitch ${deg(tilt.pitchDeg)}`,
+      hint: `tip it ${tilt.pitchDeg >= 0 ? 'up' : 'down'} to ${deg(tilt.pitchDeg)} (±${tilt.sePitch.toFixed(1)}°, ${tilt.samples} skyline columns)`,
+      apply: () => setCurrentPose({ pitch: tilt.pitchDeg }),
+    });
   }
+  if (axisSignificant(tilt.rollDeg, tilt.seRoll)) {
+    autoSteps.push({
+      axis: 'Roll',
+      label: `Roll ${deg(tilt.rollDeg)}`,
+      hint: `let it fall ${tilt.rollDeg >= 0 ? 'right' : 'left'} to ${deg(tilt.rollDeg)} (±${tilt.seRoll.toFixed(1)}°, ${tilt.samples} skyline columns)`,
+      apply: () => setCurrentPose({ roll: tilt.rollDeg }),
+    });
+  }
+  // Say what the tilt measurement found even when it is not offered, so an
+  // absent axis is never a mystery.
+  autoTiltNote = Number.isFinite(tilt.pitchDeg)
+    ? `Tilt measured over ${tilt.samples} skyline columns: pitch ${deg(tilt.pitchDeg)} ±${tilt.sePitch.toFixed(1)}°, roll ${deg(tilt.rollDeg)} ±${tilt.seRoll.toFixed(1)}°.`
+    : `No usable skyline in the compared band (${tilt.samples} columns) — pitch and roll could not be measured here.`;
   // Why there is nothing to do, when there is nothing to do.
   autoIntro = autoSteps.length
     ? ''
@@ -562,11 +569,11 @@ function renderAutoStep() {
   autoApply.disabled = true;
   autoSkip.disabled = true;
   if (!autoSteps.length) {
-    setVerdict('Nothing to change', `${autoIntro} Top band: vector world · bottom band: photo.`);
+    setVerdict('Nothing to change', `${autoIntro} ${autoTiltNote}`);
     return;
   }
   if (autoApplied.length) {
-    setVerdict('Done', `${done}${skipped}The bands should line up now. Fine-tune with the ring if needed.`);
+    setVerdict('Done', `${done}${skipped}${autoTiltNote} The bands should line up now; fine-tune with the ring if needed.`);
   } else {
     setVerdict('Nothing changed', `Every suggestion was skipped (${autoSkipped.join(', ')}). The photo is as it was.`);
   }

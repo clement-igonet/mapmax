@@ -18,8 +18,11 @@
 import { edgeProfile, skylineProfile, tiltRowShift } from './autoyaw.js';
 
 export const SCAN_BINS = 180; // 2° per bin — 1° adds time, not accuracy
-export const BAND_DEG = 24; // vertical band around the horizon, in degrees
-const STRIP_H = 48; // pixels per strip (enough for a skyline, cheap to scan)
+// Vertical band around the horizon. It must contain the ROOFLINE: in a street
+// the sky/building edge sits 30–50° up, so a narrow band saw only façade and
+// the tilt fit had nothing to lock onto (#142).
+export const BAND_DEG = 60;
+export const STRIP_H = 96; // rows per strip — 0.6° each over the 60° band
 
 // Draw the next rendered frame through `copy` before the browser composites
 // it away — the buffer is only guaranteed valid inside the render event.
