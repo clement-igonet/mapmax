@@ -1,0 +1,33 @@
+# MapMax SANDBOX stack — systemd USER service, deliberately separate from the
+# production unit (#146).
+#
+# Why its own unit: the sandbox is where branches are validated (R14), and it
+# used to share a unit with production. Restarting for a branch deploy bounced
+# www (~1 min of 502s, observed by the platform owner on 2026-08-16), and a
+# production deploy rebuilt the sandbox image, silently discarding the branch
+# under test. Separate units make each side movable without the other.
+#
+# It owns the sandbox edge (1PESI SANDBOX digit → 14400, platform RULES §6:
+# never proxied through the production edge) and the sandbox web container.
+#
+# Install (as mapmax, with linger enabled):
+#   cp scripts/mapmax-sandbox-stack.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now mapmax-sandbox-stack.service
+[Unit]
+Description=MapMax sandbox stack (edge-sandbox + web-sandbox)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/mapmax
+Environment=SANDBOX_PORT=14400
+Environment=XDG_RUNTIME_DIR=/run/user/1002
+# Only the sandbox services, and never `down` — see the production unit.
+ExecStart=/usr/bin/podman-compose up --force-recreate edge-sandbox web-sandbox
+ExecStop=/usr/bin/podman-compose stop edge-sandbox web-sandbox
+Restart=always
+RestartSec=5
+TimeoutStopSec=40
+
+[Install]
+WantedBy=default.target

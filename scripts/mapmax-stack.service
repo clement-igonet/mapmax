@@ -8,11 +8,12 @@
 #
 # Install (as mapmax, with linger enabled):
 #   cp scripts/mapmax-stack.service ~/.config/systemd/user/
+#   cp scripts/mapmax-sandbox-stack.service ~/.config/systemd/user/   # (#146)
 #   # set XDG_RUNTIME_DIR below to /run/user/$(id -u) for this user
 #   systemctl --user daemon-reload && systemctl --user enable --now mapmax-stack.service
 # Deploys just: systemctl --user restart mapmax-stack.service (see deploy-confinia.sh).
 [Unit]
-Description=MapMax podman-compose stack (edge+edge-sandbox+web+web-staging+web-sandbox)
+Description=MapMax production stack (edge + web + web-staging)
 After=default.target
 
 [Service]
@@ -26,9 +27,12 @@ Environment=WEB_PORT=14000
 Environment=STAGING_PORT=14300
 Environment=SANDBOX_PORT=14400
 Environment=XDG_RUNTIME_DIR=/run/user/1002
-ExecStartPre=-/usr/bin/podman-compose down
-ExecStart=/usr/bin/podman-compose up edge edge-sandbox web web-staging web-sandbox
-ExecStop=/usr/bin/podman-compose down
+# NEVER `down` (#146): it tears down the whole compose project, sandbox
+# included — which is how a branch validation used to bounce production and a
+# production deploy used to clobber the branch under test. Own only these
+# services; --force-recreate replaces them without needing a project-wide rm.
+ExecStart=/usr/bin/podman-compose up --force-recreate edge web web-staging
+ExecStop=/usr/bin/podman-compose stop edge web web-staging
 Restart=always
 RestartSec=5
 TimeoutStopSec=40
