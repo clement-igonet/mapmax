@@ -12,7 +12,7 @@
 //
 // Only the horizon band is compared: it carries the façade/skyline structure
 // both renderings share, and it is where a yaw error shows up as displacement.
-import { edgeProfile, skylineProfile } from './autoyaw.js';
+import { edgeProfile, skylineProfile, tiltRowShift } from './autoyaw.js';
 
 export const SCAN_BINS = 180; // 2° per bin — 1° adds time, not accuracy
 export const BAND_DEG = 24; // vertical band around the horizon, in degrees
@@ -98,6 +98,36 @@ export async function photoStrip(imageUrl, panoYaw, { bins = SCAN_BINS } = {}) {
 
 // Both features of a strip, ready for proposeYawDelta().
 export const stripProfiles = (strip) => ({ skyline: skylineProfile(strip), edge: edgeProfile(strip) });
+
+/**
+ * The photo band as it stands under the CURRENT pose (#142): rolled
+ * horizontally by the yaw change since the scan, and displaced vertically per
+ * column by the pitch/roll now applied. Regenerating the band this way keeps
+ * the comparison alive for the axes still to check — after fixing the yaw you
+ * are looking at the yaw-corrected photo when judging pitch, and so on.
+ */
+export function poseStrip(strip, { dYawDeg = 0, pitchDeg = 0, rollDeg = 0, centreAz = 0, bandDeg = BAND_DEG } = {}) {
+  const w = strip.width;
+  const h = strip.height;
+  const out = new ImageData(w, h);
+  const shiftX = ((Math.round((dYawDeg / 360) * w) % w) + w) % w;
+  for (let x = 0; x < w; x++) {
+    const relAz = ((((((x * 360) / w - centreAz) % 360) + 540) % 360) - 180);
+    const dy = Math.round(tiltRowShift(relAz, pitchDeg, rollDeg, bandDeg, h));
+    const sx = (x + shiftX) % w;
+    for (let y = 0; y < h; y++) {
+      const sy = y + dy;
+      const dst = (x + y * w) * 4;
+      if (sy < 0 || sy >= h) { out.data[dst + 3] = 255; continue; } // outside the captured band
+      const src = (sx + sy * w) * 4;
+      out.data[dst] = strip.data[src];
+      out.data[dst + 1] = strip.data[src + 1];
+      out.data[dst + 2] = strip.data[src + 2];
+      out.data[dst + 3] = strip.data[src + 3];
+    }
+  }
+  return out;
+}
 
 // A strip rolled horizontally by `deg` — how the panorama would sit after
 // applying a correction, without touching the picture (#142 live preview).

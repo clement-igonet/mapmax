@@ -164,3 +164,23 @@ Deno.test('fitTilt: recovers pitch and roll from the vertical offset (#142)', as
   for (let i = 0; i < N; i++) junk[i] = 6 * Math.sin(i * 3.7) * Math.cos(i * 1.9);
   assert(!tiltIsUsable(fitTilt(junk, rel)));
 });
+
+Deno.test('tiltRowShift: inverts the fit model, so a corrected band can be re-rendered (#142)', async () => {
+  const { fitTilt, tiltRowShift } = await import('../../src/autoyaw.js');
+  const band = 24, H = 48, pitch = -3, roll = 2;
+  // The shift applied per column must reproduce exactly the displacement the
+  // fit measured — otherwise the regenerated band would drift from the maths.
+  const rel = new Float32Array(N);
+  const diff = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    rel[i] = (i * 360) / N - 180;
+    diff[i] = tiltRowShift(rel[i], pitch, roll, band, H) * (band / H); // rows → degrees
+  }
+  const f = fitTilt(diff, rel);
+  assertAlmostEquals(f.pitchDeg, pitch, 1e-4);
+  assertAlmostEquals(f.rollDeg, roll, 1e-4);
+  // Straight ahead only pitch moves the band; 90° to the side, only roll.
+  assertAlmostEquals(tiltRowShift(0, pitch, roll, band, H), (pitch / band) * H, 1e-9);
+  assertAlmostEquals(tiltRowShift(90, pitch, roll, band, H), (roll / band) * H, 1e-9);
+  assertAlmostEquals(tiltRowShift(0, 0, 0, band, H), 0, 1e-9);
+});

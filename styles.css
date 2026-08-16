@@ -294,6 +294,7 @@ body {
 }
 
 #auto-verdict {
+  white-space: pre-line; /* the axis map sits on its own line */
   background: rgb(24, 25, 28);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 8px;

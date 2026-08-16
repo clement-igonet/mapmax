@@ -16,7 +16,7 @@ import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
-import { BAND_DEG, photoStrip, rollStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
+import { BAND_DEG, photoStrip, poseStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
 import { fitTilt, isConfident, proposeYawDelta, tiltIsUsable } from './autoyaw.js';
 import { setupLicenseGate } from './licensegate.js';
 
@@ -381,8 +381,18 @@ function drawAutoPreview() {
   const ctx = autoStrips.getContext('2d');
   ctx.clearRect(0, 0, autoStrips.width, autoStrips.height);
   ctx.putImageData(autoScan.world, 0, 0);
+  // Regenerated under the FULL current pose (#142): yaw rolls it horizontally,
+  // pitch/roll displace it per column — so the axes not yet checked are judged
+  // against the photo as it is now, not as it was captured.
+  const pose = getCurrentPose() || { pitch: 0, roll: 0 };
   ctx.putImageData(
-    rollStrip(autoScan.photo, autoScan.baseYaw - currentPanoYaw()),
+    poseStrip(autoScan.photo, {
+      dYawDeg: autoScan.baseYaw - currentPanoYaw(),
+      pitchDeg: pose.pitch,
+      rollDeg: pose.roll,
+      centreAz: currentPanoYaw(),
+      bandDeg: BAND_DEG,
+    }),
     0,
     autoStrips.height - autoScan.photo.height
   );
@@ -395,7 +405,7 @@ async function runAutoFix() {
   autoBtn.disabled = true;
   autoPreview.hidden = true;
   try {
-    poseStatus.textContent = 'Scanning the vector world — the view spins once…';
+    poseStatus.textContent = 'Scanning the vector world — the view spins once. Then: Yaw → Pitch → Roll.';
     const world = await scanWorldStrip(map, ps, {
       setBlend,
       blendAfter: sliderToBlend(blendSlider.value),
@@ -483,13 +493,25 @@ function buildAutoSteps(proposal, tilt) {
   renderAutoStep();
 }
 
+// "Yaw ✔ · Pitch ▶ · Roll ·" — which axis is being checked, at a glance.
+function axisMap() {
+  const state = (axis) => {
+    const i = autoSteps.findIndex((s) => s.axis === axis);
+    if (i === -1) return `${axis} —`; // nothing proposed on this axis
+    if (autoApplied.some((l) => l.startsWith(axis))) return `${axis} ✔`;
+    if (autoSkipped.includes(axis)) return `${axis} ✕`;
+    return i === autoStep ? `${axis} ▶` : `${axis} ·`;
+  };
+  return ['Yaw', 'Pitch', 'Roll'].map(state).join('  ');
+}
+
 function renderAutoStep() {
   const step = autoSteps[autoStep];
   const done = autoApplied.length ? `Fixed: ${autoApplied.join(' · ')}. ` : '';
   const skipped = autoSkipped.length ? `Skipped: ${autoSkipped.join(', ')}. ` : '';
   if (step) {
     autoVerdict.textContent =
-      `${done}${skipped}Step ${autoStep + 1}/${autoSteps.length} — ${step.axis}: ${step.hint}. Top: vector world · bottom: photo.`;
+      `${axisMap()}\nStep ${autoStep + 1}/${autoSteps.length} — ${step.axis}: ${step.hint}.\n${done}${skipped}Top: vector world · bottom: photo.`;
     autoApply.disabled = false;
     autoSkip.disabled = false;
     return;
@@ -497,12 +519,12 @@ function renderAutoStep() {
   autoApply.disabled = true;
   autoSkip.disabled = true;
   if (!autoSteps.length) {
-    autoVerdict.textContent = `${autoIntro} Top: vector world · bottom: photo.`;
+    autoVerdict.textContent = `${axisMap()}\n${autoIntro}\nTop: vector world · bottom: photo.`;
     return;
   }
   autoVerdict.textContent = autoApplied.length
-    ? `${done}${skipped}Done — the bands should line up now. Fine-tune with the ring if needed.`
-    : `Nothing changed — every suggestion was skipped (${autoSkipped.join(', ')}). The photo is as it was.`;
+    ? `${axisMap()}\n${done}${skipped}Done — the bands should line up now. Fine-tune with the ring if needed.`
+    : `${axisMap()}\nNothing changed — every suggestion was skipped (${autoSkipped.join(', ')}). The photo is as it was.`;
 }
 
 autoBtn.addEventListener('click', runAutoFix);

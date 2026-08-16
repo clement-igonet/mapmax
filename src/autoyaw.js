@@ -204,3 +204,12 @@ export function fitTilt(diffDeg, relAzDeg) {
 // the correction itself — otherwise the "skyline" is noise (trees, cranes).
 export const tiltIsUsable = ({ pitchDeg, rollDeg, rms, samples }) =>
   Number.isFinite(pitchDeg) && samples >= 24 && rms < Math.max(1.5, 0.8 * Math.hypot(pitchDeg, rollDeg));
+
+// Vertical displacement (in strip rows) that a tilt produces at azimuth `a` —
+// the inverse of fitTilt's model. Re-rendering the photo band through this is
+// what lets the comparison CONTINUE on the remaining axes after one has been
+// corrected: the band shown is the band as it now is, not as it was captured.
+export function tiltRowShift(relAzDeg, pitchDeg, rollDeg, bandDeg, stripH) {
+  const a = (relAzDeg * Math.PI) / 180;
+  return (((pitchDeg || 0) * Math.cos(a) + (rollDeg || 0) * Math.sin(a)) / bandDeg) * stripH;
+}
