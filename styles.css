@@ -261,17 +261,36 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* Auto-fix orientation preview (#142): two unrolled bands, map over photo. */
+/* Auto-fix orientation preview (#142): two unrolled bands, map over photo.
+   The wrapper is an INVISIBLE container — the #100 rule: a large self-backed
+   surface over the WebGL canvas rasterizes unreliably (it drew as black
+   fragments), while small opaque chips never glitch. So the wrapper carries
+   no background/border/padding and each child is its own chip. */
+#auto-preview {
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 #auto-strips {
   display: block;
   width: 100%;
   height: auto;
   image-rendering: pixelated;
-  border-radius: 4px;
+  /* Opaque before the first draw, so it is never a transparent hole. */
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
 }
 
 #auto-verdict {
-  margin-top: 5px;
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 6px 10px;
   font-size: 11px;
   line-height: 1.4;
   color: rgba(255, 255, 255, 0.85);
