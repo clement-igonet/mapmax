@@ -64,10 +64,6 @@ export const map = new maplibregl.Map({
   // Keep the camera free of the ground plane so the photosphere plugin can sit
   // the eye at a fixed elevation (SPECIFICATIONS.md §2.2).
   centerClampedToGround: false,
-  // The orientation auto-fix (#142) reads the rendered canvas back to build an
-  // equirect of the vector world; without this the buffer is cleared before we
-  // can sample it.
-  preserveDrawingBuffer: true,
   hash: true,
 });
 

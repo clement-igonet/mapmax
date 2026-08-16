@@ -4,8 +4,11 @@
 //
 //   world strip — the vector scene (buildings, streets) seen from the
 //     picture's stand-point: spin the street-mode camera through 360° at the
-//     horizon and stitch the centre slice of each frame. Reading the map
-//     canvas needs `preserveDrawingBuffer` on the Map (see main.js).
+//     horizon and stitch the centre slice of each frame. The slice is copied
+//     INSIDE MapLibre's `render` event, while the drawing buffer is still
+//     intact — `preserveDrawingBuffer` would work too, but it changes how the
+//     WebGL canvas composites and made the overlay controls blank on hover
+//     (the #100 pathology), so it stays off.
 //   photo strip — the panorama IS an equirect: resample its horizon band
 //     directly, mapping each azimuth bin through the pose's panoYaw. No
 //     spinning, no resampling error beyond one column lookup.
@@ -18,7 +21,15 @@ export const SCAN_BINS = 180; // 2° per bin — 1° adds time, not accuracy
 export const BAND_DEG = 24; // vertical band around the horizon, in degrees
 const STRIP_H = 48; // pixels per strip (enough for a skyline, cheap to scan)
 
-const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+// Draw the next rendered frame through `copy` before the browser composites
+// it away — the buffer is only guaranteed valid inside the render event.
+const captureNextFrame = (map, copy) => new Promise((resolve) => {
+  map.once('render', () => {
+    try { copy(); } catch (err) { console.warn('auto-fix: frame capture failed', err); }
+    resolve();
+  });
+  map.triggerRepaint();
+});
 
 function scratch(w, h) {
   const c = document.createElement('canvas');
@@ -54,9 +65,7 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     const sy = Math.round(canvas.height / 2 - bandH / 2);
     for (let j = 0; j < bins; j++) {
       ps.look(((((j * 360) / bins - ps.yaw) % 360) + 540) % 360 - 180, 0);
-      await frame();
-      await frame(); // one to schedule the repaint, one to let it land
-      ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H);
+      await captureNextFrame(map, () => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
       if (onProgress && j % 10 === 0) onProgress(j / bins);
     }
     return ctx.getImageData(0, 0, bins, STRIP_H);
