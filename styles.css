@@ -332,6 +332,37 @@ body {
   margin-bottom: 3px;
 }
 
+/* The preview lives outside the pose panel, so it does not inherit the panel's
+   chip styling: its buttons need their own opaque background or they read as
+   grey labels over a bright photo (they did — "how do I apply?"). */
+#auto-preview .pose-actions button {
+  background: rgb(52, 54, 60);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  white-space: nowrap;
+}
+
+#auto-preview .pose-actions button:hover:not(:disabled) {
+  background: rgb(66, 68, 76);
+}
+
+#auto-preview .pose-actions button:disabled {
+  background: rgb(30, 31, 35);
+  color: rgba(255, 255, 255, 0.35);
+  cursor: default;
+}
+
+/* The primary action reads as primary. */
+#auto-apply:not(:disabled) {
+  background: #ff6f00;
+  border-color: #ff6f00;
+  font-weight: 700;
+}
+
+#auto-apply:not(:disabled):hover {
+  background: #ff8124;
+}
+
 #auto-verdict {
   background: rgb(24, 25, 28);
   border: 1px solid rgba(255, 255, 255, 0.25);
