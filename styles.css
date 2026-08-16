@@ -408,8 +408,10 @@ body {
    one small chip right of the (rotation) ring. */
 #pose-elev {
   position: absolute;
-  top: calc(50% - 130px);
-  left: calc(50% + 160px);
+  /* Right column, under the pose panel: in mid-view it covered the street it
+     was meant to help you position against. */
+  top: 330px;
+  right: 50px;
   z-index: 19;
   width: 84px;
   background: rgb(24, 25, 28);

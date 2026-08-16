@@ -369,6 +369,7 @@ const autoPreview = document.getElementById('auto-preview');
 let autoStrips = null; // created on demand (#142) — see ensureStrips()
 const autoVerdict = document.getElementById('auto-verdict');
 const autoApply = document.getElementById('auto-apply');
+const autoYawOk = document.getElementById('auto-yaw-ok');
 const norm360 = (d) => ((d % 360) + 360) % 360;
 // The world azimuth the image centre currently claims to face.
 const currentPanoYaw = () => norm360((currentPic?.heading || 0) + (getCurrentPose()?.yaw || 0));
@@ -379,6 +380,10 @@ let autoPending = null; // the correction the Apply button would make
 let autoYawAligned = false;
 
 function updateAxisButtons() {
+  // Confirming by eye is offered whenever the yaw is not established: the
+  // bands ARE the alignment tool — the photo band follows every manual turn
+  // (drag, ring, flip) live, so the user can line them up and say so (#142).
+  autoYawOk.hidden = autoYawAligned;
   for (const b of autoButtons) {
     if (b.axis === 'Yaw') continue;
     b.el.disabled = !autoYawAligned;
@@ -455,7 +460,7 @@ function measureAxis(axis) {
     autoYawAligned = isConfident(p) && Math.abs(p.deltaDeg) < 0.5;
     updateAxisButtons();
     if (!isConfident(p)) {
-      setVerdict('Yaw — no confident match', `${p.method} match ${pct}: too little shared structure here (open sky, trees, night). The photo is unchanged, and Pitch/Roll stay locked — a tilt cannot be read from bands that are not aligned.`);
+      setVerdict('Yaw — no confident match', `${p.method} match ${pct}: too little shared structure here (open sky, trees, night). Line the two bands up yourself — drag the photo, use the roll ring or the 180° flip, and the bottom band follows live — then press “Yaw is aligned” to unlock Pitch and Roll.`);
     } else if (Math.abs(p.deltaDeg) < 0.5) {
       setVerdict('Yaw — already aligned', `Within half a degree of the vector world (${p.method} match ${pct}). Nothing to change here; Pitch and Roll are now unlocked.`);
     } else {
@@ -557,6 +562,11 @@ autoApply.addEventListener('click', () => {
   drawAutoPreview();
   measureAxis(axis);
   if (!autoPending) setVerdict(`${axis} applied`, `${pending.label} applied — re-measured and now within the noise. The bands should line up.`);
+});
+autoYawOk.addEventListener('click', () => {
+  autoYawAligned = true;
+  updateAxisButtons();
+  setVerdict('Yaw confirmed by eye', 'Pitch and Roll are unlocked and will be measured against the alignment you set. Re-measure the yaw at any time to check it.');
 });
 document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; removeStrips(); autoPending = null; });
 onPictureChanged(() => {

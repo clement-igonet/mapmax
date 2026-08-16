@@ -70,8 +70,19 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
   const ctx = out.getContext('2d', { willReadFrequently: true });
   const savedYaw = ps.yaw;
   const savedPitch = ps.pitch;
+  // The photo stays on screen for the whole scan; only the single frame that
+  // is copied is rendered vector-only, otherwise the photo would contaminate
+  // the world band. Capped just under 0.99 because at full photo opacity the
+  // tile budget suspends the vector layers (#11) — and then there would be no
+  // buildings left to capture.
+  const scanBlend = Math.min(blendAfter, 0.98);
+  const captureBin = async (copy) => {
+    setBlend(0);
+    await captureNextFrame(map, copy);
+    setBlend(scanBlend);
+  };
   try {
-    setBlend(0); // vector only — the photosphere layer (and its nav dots) go fully transparent
+    setBlend(scanBlend);
     ps.look(0, -savedPitch); // level with the horizon: the band we compare
     const fovY = ps._options.fov;
     const aspect = canvas.clientWidth / canvas.clientHeight;
@@ -97,7 +108,7 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     for (let j = 0; j < bins; j++) {
       faceBin(j);
       await settle(map, 400);
-      await captureNextFrame(map, () => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
+      await captureBin(() => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
       if (onProgress && j % 10 === 0) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
     }
     return ctx.getImageData(0, 0, bins, STRIP_H);
