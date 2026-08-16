@@ -15,7 +15,7 @@
 import { edgeProfile, skylineProfile } from './autoyaw.js';
 
 export const SCAN_BINS = 180; // 2° per bin — 1° adds time, not accuracy
-const BAND_DEG = 24; // vertical band around the horizon, in degrees
+export const BAND_DEG = 24; // vertical band around the horizon, in degrees
 const STRIP_H = 48; // pixels per strip (enough for a skyline, cheap to scan)
 
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));

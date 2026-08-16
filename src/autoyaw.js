@@ -132,3 +132,75 @@ export function proposeYawDelta(photo, world) {
 // synthetic 3D render never reaches 0.9 — 0.35 with a clear margin is a solid
 // match in practice, and everything below is reported as uncertain.
 export const isConfident = ({ score, margin }) => score >= 0.35 && margin >= 0.1;
+
+// --- Pitch and roll from the same two bands (#142) ---------------------------
+// Once the yaw is aligned, whatever VERTICAL offset remains between the photo
+// skyline and the world skyline is a tilt. For small angles the horizon of a
+// camera tilted by (pitch about its right axis, roll about its forward axis)
+// is displaced by
+//     Δelev(a) = pitch·cos(a) + roll·sin(a) + C
+// where `a` is the azimuth relative to the image centre: straight ahead only
+// pitch moves it, 90° to the side only roll does. C absorbs a systematic bias
+// (eye height, "skyline" meaning roof edge in one rendering and gutter in the
+// other) so it cannot masquerade as tilt.
+//
+// The result is ABSOLUTE (the photo band is sampled from the raw image, not
+// from the posed render), so it is a pitch/roll to SET, not to add.
+
+// Least squares over the basis [1, cos a, sin a] via the 3×3 normal equations.
+function solve3(m, v) {
+  const a = [[...m[0], v[0]], [...m[1], v[1]], [...m[2], v[2]]];
+  for (let c = 0; c < 3; c++) {
+    let piv = c;
+    for (let r = c + 1; r < 3; r++) if (Math.abs(a[r][c]) > Math.abs(a[piv][c])) piv = r;
+    if (Math.abs(a[piv][c]) < 1e-9) return null; // singular: not enough spread
+    [a[c], a[piv]] = [a[piv], a[c]];
+    for (let r = 0; r < 3; r++) {
+      if (r === c) continue;
+      const f = a[r][c] / a[c][c];
+      for (let k = c; k < 4; k++) a[r][k] -= f * a[c][k];
+    }
+  }
+  return [a[0][3] / a[0][0], a[1][3] / a[1][1], a[2][3] / a[2][2]];
+}
+
+/**
+ * @param {Float32Array|number[]} diffDeg  photo − world skyline, in degrees, per bin (NaN = no signal)
+ * @param {Float32Array|number[]} relAzDeg azimuth of each bin relative to the image centre
+ * @returns {{pitchDeg: number, rollDeg: number, offsetDeg: number, rms: number, samples: number}}
+ *          pitch/roll are NaN when too few bins carry a skyline to fit.
+ */
+export function fitTilt(diffDeg, relAzDeg) {
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  const v = [0, 0, 0];
+  let samples = 0;
+  const rows = [];
+  for (let i = 0; i < diffDeg.length; i++) {
+    const d = diffDeg[i];
+    if (!Number.isFinite(d)) continue;
+    const a = (relAzDeg[i] * Math.PI) / 180;
+    const basis = [1, Math.cos(a), Math.sin(a)];
+    rows.push({ basis, d });
+    for (let r = 0; r < 3; r++) {
+      v[r] += basis[r] * d;
+      for (let c = 0; c < 3; c++) M[r][c] += basis[r] * basis[c];
+    }
+    samples++;
+  }
+  const none = { pitchDeg: NaN, rollDeg: NaN, offsetDeg: NaN, rms: NaN, samples };
+  if (samples < 12) return none;
+  const sol = solve3(M, v);
+  if (!sol) return none;
+  const [offsetDeg, pitchDeg, rollDeg] = sol;
+  let sq = 0;
+  for (const { basis, d } of rows) {
+    const fit = basis[0] * offsetDeg + basis[1] * pitchDeg + basis[2] * rollDeg;
+    sq += (d - fit) ** 2;
+  }
+  return { pitchDeg, rollDeg, offsetDeg, rms: Math.sqrt(sq / samples), samples };
+}
+
+// A tilt fit is only worth offering when the residual is small compared with
+// the correction itself — otherwise the "skyline" is noise (trees, cranes).
+export const tiltIsUsable = ({ pitchDeg, rollDeg, rms, samples }) =>
+  Number.isFinite(pitchDeg) && samples >= 24 && rms < Math.max(1.5, 0.8 * Math.hypot(pitchDeg, rollDeg));

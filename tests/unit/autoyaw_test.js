@@ -127,3 +127,40 @@ Deno.test('proposeYawDelta: picks the better-scoring feature, degrades gracefull
   assertEquals(none.deltaDeg, 0);
   assert(!isConfident(none));
 });
+
+Deno.test('fitTilt: recovers pitch and roll from the vertical offset (#142)', async () => {
+  const { fitTilt, tiltIsUsable } = await import('../../src/autoyaw.js');
+  const rel = new Float32Array(N);
+  for (let i = 0; i < N; i++) rel[i] = (i * 360) / N - 180; // −180…180 around the centre
+  const make = (pitch, roll, offset = 0) => {
+    const d = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const a = (rel[i] * Math.PI) / 180;
+      d[i] = offset + pitch * Math.cos(a) + roll * Math.sin(a);
+    }
+    return d;
+  };
+  const clean = fitTilt(make(-3.2, 1.7, 0.4), rel);
+  assertAlmostEquals(clean.pitchDeg, -3.2, 1e-4);
+  assertAlmostEquals(clean.rollDeg, 1.7, 1e-4);
+  assertAlmostEquals(clean.offsetDeg, 0.4, 1e-4); // bias absorbed, not read as tilt
+  assert(clean.rms < 1e-4 && tiltIsUsable(clean));
+
+  // Gaps and noise: still close, and still usable.
+  const noisy = make(2.5, -1.0);
+  for (let i = 0; i < N; i += 4) noisy[i] = NaN;
+  for (let i = 0; i < N; i++) if (Number.isFinite(noisy[i])) noisy[i] += 0.3 * Math.sin(i * 7.3);
+  const nf = fitTilt(noisy, rel);
+  assertAlmostEquals(nf.pitchDeg, 2.5, 0.3);
+  assertAlmostEquals(nf.rollDeg, -1.0, 0.3);
+
+  // Too few skyline columns → no proposal at all.
+  const sparse = new Float32Array(N).fill(NaN);
+  for (let i = 0; i < 8; i++) sparse[i] = 1;
+  assert(Number.isNaN(fitTilt(sparse, rel).pitchDeg));
+  assert(!tiltIsUsable(fitTilt(sparse, rel)));
+  // Pure noise: the residual dwarfs the fitted tilt → not offered.
+  const junk = new Float32Array(N);
+  for (let i = 0; i < N; i++) junk[i] = 6 * Math.sin(i * 3.7) * Math.cos(i * 1.9);
+  assert(!tiltIsUsable(fitTilt(junk, rel)));
+});

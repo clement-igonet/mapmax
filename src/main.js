@@ -16,8 +16,8 @@ import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
-import { photoStrip, rollStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
-import { isConfident, proposeYawDelta } from './autoyaw.js';
+import { BAND_DEG, photoStrip, rollStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
+import { fitTilt, isConfident, proposeYawDelta, tiltIsUsable } from './autoyaw.js';
 import { setupLicenseGate } from './licensegate.js';
 
 // The sources this build browses (#112) — Panoramax is the backbone (first
@@ -367,6 +367,7 @@ const autoPreview = document.getElementById('auto-preview');
 const autoStrips = document.getElementById('auto-strips');
 const autoVerdict = document.getElementById('auto-verdict');
 const autoApply = document.getElementById('auto-apply');
+const autoSkip = document.getElementById('auto-skip');
 const norm360 = (d) => ((d % 360) + 360) % 360;
 // The world azimuth the image centre currently claims to face.
 const currentPanoYaw = () => norm360((currentPic?.heading || 0) + (getCurrentPose()?.yaw || 0));
@@ -402,16 +403,25 @@ async function runAutoFix() {
     });
     const baseYaw = currentPanoYaw();
     const photo = await photoStrip(url, baseYaw);
-    const proposal = proposeYawDelta(stripProfiles(photo), stripProfiles(world));
-    autoScan = { world, photo, baseYaw, proposal };
+    const wp = stripProfiles(world);
+    const pp = stripProfiles(photo);
+    const proposal = proposeYawDelta(pp, wp);
+    // With the yaw aligned, the vertical gap between the two skylines is a
+    // tilt: pitch·cos(a) + roll·sin(a) around the image centre (#142).
+    const n = wp.skyline.length;
+    const centre = baseYaw + (isConfident(proposal) ? proposal.deltaDeg : 0);
+    const diff = new Float32Array(n);
+    const relAz = new Float32Array(n);
+    for (let j = 0; j < n; j++) {
+      const pj = (((j - proposal.shift) % n) + n) % n;
+      diff[j] = (pp.skyline[pj] - wp.skyline[j]) * BAND_DEG;
+      relAz[j] = (((((j * 360) / n - centre) % 360) + 540) % 360) - 180;
+    }
+    const tilt = fitTilt(diff, relAz);
+    autoScan = { world, photo, baseYaw, proposal, tilt };
     autoPreview.hidden = false;
     drawAutoPreview();
-    const pct = Number.isFinite(proposal.score) ? `${Math.round(proposal.score * 100)}%` : 'n/a';
-    const sign = proposal.deltaDeg >= 0 ? '+' : '';
-    autoVerdict.textContent = isConfident(proposal)
-      ? `Top: vector world · bottom: photo. Proposed ${sign}${proposal.deltaDeg.toFixed(0)}° (${proposal.method} match ${pct}).`
-      : `Top: vector world · bottom: photo. No confident match (${proposal.method} ${pct}) — align by eye, or try another picture of the sequence.`;
-    autoApply.disabled = !isConfident(proposal);
+    buildAutoSteps(proposal, tilt);
     poseStatus.textContent = POSE_STATUS_DEFAULT;
   } catch (err) {
     console.warn('auto-fix scan failed', err);
@@ -421,15 +431,97 @@ async function runAutoFix() {
   }
 }
 
+// One axis at a time (#142): the scan proposes yaw, then pitch, then roll —
+// the order they matter in, so a correction is never a three-knob guess. Every
+// outcome is reported: what was applied, what was skipped, and — the case that
+// must never look like success — that nothing was changed at all.
+let autoSteps = [];
+let autoStep = 0;
+let autoApplied = [];
+let autoSkipped = [];
+let autoIntro = '';
+
+function buildAutoSteps(proposal, tilt) {
+  const pct = Number.isFinite(proposal.score) ? `${Math.round(proposal.score * 100)}%` : 'n/a';
+  const deg = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}°`;
+  autoSteps = [];
+  autoApplied = [];
+  autoSkipped = [];
+  autoStep = 0;
+  if (isConfident(proposal) && Math.abs(proposal.deltaDeg) >= 1) {
+    autoSteps.push({
+      axis: 'Yaw',
+      label: `Yaw ${deg(proposal.deltaDeg)}`,
+      hint: `turn the photo ${deg(proposal.deltaDeg)} (${proposal.method} match ${pct})`,
+      apply: () => setCurrentPose({ yaw: getCurrentPose().yaw + proposal.deltaDeg }),
+    });
+  }
+  if (tiltIsUsable(tilt)) {
+    if (Math.abs(tilt.pitchDeg) >= 0.5) {
+      autoSteps.push({
+        axis: 'Pitch',
+        label: `Pitch ${deg(tilt.pitchDeg)}`,
+        hint: `tip it ${tilt.pitchDeg >= 0 ? 'up' : 'down'} to ${deg(tilt.pitchDeg)} (skyline fit ±${tilt.rms.toFixed(1)}°)`,
+        apply: () => setCurrentPose({ pitch: tilt.pitchDeg }),
+      });
+    }
+    if (Math.abs(tilt.rollDeg) >= 0.5) {
+      autoSteps.push({
+        axis: 'Roll',
+        label: `Roll ${deg(tilt.rollDeg)}`,
+        hint: `let it fall ${tilt.rollDeg >= 0 ? 'right' : 'left'} to ${deg(tilt.rollDeg)} (skyline fit ±${tilt.rms.toFixed(1)}°)`,
+        apply: () => setCurrentPose({ roll: tilt.rollDeg }),
+      });
+    }
+  }
+  // Why there is nothing to do, when there is nothing to do.
+  autoIntro = autoSteps.length
+    ? ''
+    : isConfident(proposal)
+      ? `Already aligned — the photo matches the vector world to within a degree (${proposal.method} match ${pct}). Nothing to fix.`
+      : `No confident match (${proposal.method} ${pct}) — too little shared structure here (open sky, trees, night). The photo is unchanged; try another picture of the sequence, or align by eye.`;
+  renderAutoStep();
+}
+
+function renderAutoStep() {
+  const step = autoSteps[autoStep];
+  const done = autoApplied.length ? `Fixed: ${autoApplied.join(' · ')}. ` : '';
+  const skipped = autoSkipped.length ? `Skipped: ${autoSkipped.join(', ')}. ` : '';
+  if (step) {
+    autoVerdict.textContent =
+      `${done}${skipped}Step ${autoStep + 1}/${autoSteps.length} — ${step.axis}: ${step.hint}. Top: vector world · bottom: photo.`;
+    autoApply.disabled = false;
+    autoSkip.disabled = false;
+    return;
+  }
+  autoApply.disabled = true;
+  autoSkip.disabled = true;
+  if (!autoSteps.length) {
+    autoVerdict.textContent = `${autoIntro} Top: vector world · bottom: photo.`;
+    return;
+  }
+  autoVerdict.textContent = autoApplied.length
+    ? `${done}${skipped}Done — the bands should line up now. Fine-tune with the ring if needed.`
+    : `Nothing changed — every suggestion was skipped (${autoSkipped.join(', ')}). The photo is as it was.`;
+}
+
 autoBtn.addEventListener('click', runAutoFix);
 autoApply.addEventListener('click', () => {
-  if (!autoScan || !isConfident(autoScan.proposal)) return;
-  setCurrentPose({ yaw: getCurrentPose().yaw + autoScan.proposal.deltaDeg });
-  autoScan.proposal = { ...autoScan.proposal, deltaDeg: 0 };
-  syncPosePanel(); // redraws the bands at the new yaw
+  const step = autoSteps[autoStep];
+  if (!step) return;
+  step.apply();
+  autoApplied.push(step.label);
+  autoStep++;
+  syncPosePanel(); // redraws the bands at the new pose
   syncRing();
-  autoVerdict.textContent = 'Applied — the bands should line up now. Fine-tune with the ring if needed.';
-  autoApply.disabled = true;
+  renderAutoStep();
+});
+autoSkip.addEventListener('click', () => {
+  const step = autoSteps[autoStep];
+  if (!step) return;
+  autoSkipped.push(step.axis);
+  autoStep++;
+  renderAutoStep();
 });
 document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; });
 // A different picture means a different stand-point: the scan no longer applies.
