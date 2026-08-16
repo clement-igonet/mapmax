@@ -31,7 +31,10 @@ services:
     depends_on:
       - web
       - web-staging
-      - web-sandbox
+      # NOT web-sandbox (#146): the sandbox is owned by its own systemd unit,
+      # and depends_on would make this unit start it too — production would be
+      # back to bouncing the sandbox (and vice versa). The dual-publish route
+      # below still reaches it: Caddy resolves the upstream per request.
 
   # Sandbox edge — its OWN caddy (platform RULES §6): a sandbox must never be
   # proxied through the production edge, so a second port on `edge` would
