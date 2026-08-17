@@ -51,6 +51,19 @@ Deno.test('systemd units keep production and sandbox independently movable (#146
   assert(/ExecStart=.*up .*edge web web-staging/.test(prod), 'production unit must own exactly edge/web/web-staging');
   assert(!/ExecStart=.*web-sandbox/.test(prod), 'production unit must not own the sandbox');
   assert(/ExecStart=.*up .*edge-sandbox web-sandbox/.test(sandbox), 'sandbox unit must own the sandbox services');
+  // #154: the world-band api rides with the sandbox, never with production.
+  assert(/ExecStart=.*\bapi\b/.test(sandbox), 'sandbox unit must own the api service (#154)');
+  assert(!/ExecStart=.*\bapi\b/.test(prod), 'production unit must not own the api service (#154)');
+});
+
+Deno.test('world-band api is wired sandbox-only (#154)', async () => {
+  const dc = await read('docker-compose.yml');
+  assert(dc.includes('dockerfile: api/Dockerfile'), 'api service missing from compose');
+  assert(dc.includes('worldband-cache:/var/cache/worldband'), 'api must persist its render cache');
+  const cfSandbox = await read('docker/Caddyfile.sandbox');
+  assert(cfSandbox.includes('handle /api/*') && cfSandbox.includes('reverse_proxy api:8080'), 'sandbox edge must route /api/* to the api service');
+  const cfProd = await read('docker/Caddyfile');
+  assert(!cfProd.includes('api:8080'), 'the production edge must NOT route to the api yet — the app falls back to the in-browser spin there');
 });
 
 Deno.test('docker/Caddyfile routes the confinia.io hosts to the web service', async () => {
