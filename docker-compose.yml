@@ -17,14 +17,35 @@ services:
   edge:
     image: docker.io/library/caddy:2-alpine
     ports:
-      # 1PESI band (platform PR #10): mapmax = 14xxx. Legacy 8087 dropped
-      # 2026-08-15 after the platform flipped the edge to 14000.
+      # 1PESI band: mapmax = 14xxx, environment fixed by the E digit —
+      # PROD 14000, STAGING 14300 (own listener, same container: the platform
+      # allows a listener split for staging). SANDBOX is NOT here: platform
+      # RULES §6 requires it to have its own caddy, never one shared with
+      # production — see the `edge-sandbox` service below.
+      # All three hostnames keep working on 14000 (dual-publish) until the
+      # platform edge is flipped to the new ports.
       - "127.0.0.1:${WEB_PORT:-14000}:80"
+      - "127.0.0.1:${STAGING_PORT:-14300}:14300"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - web
       - web-staging
+      # NOT web-sandbox (#146): the sandbox is owned by its own systemd unit,
+      # and depends_on would make this unit start it too — production would be
+      # back to bouncing the sandbox (and vice versa). The dual-publish route
+      # below still reaches it: Caddy resolves the upstream per request.
+
+  # Sandbox edge — its OWN caddy (platform RULES §6): a sandbox must never be
+  # proxied through the production edge, so a second port on `edge` would
+  # satisfy the numbering and none of the isolation.
+  edge-sandbox:
+    image: docker.io/library/caddy:2-alpine
+    ports:
+      - "127.0.0.1:${SANDBOX_PORT:-14400}:80"
+    volumes:
+      - ./docker/Caddyfile.sandbox:/etc/caddy/Caddyfile:ro
+    depends_on:
       - web-sandbox
 
   web:

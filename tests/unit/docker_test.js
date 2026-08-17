@@ -25,8 +25,32 @@ Deno.test('docker-compose.yml defines edge + web + containerized-Chromium e2e se
   assert(dc.includes('edge:'), 'edge service missing');
   assert(dc.includes('caddy'), 'edge must run Caddy');
   assert(dc.includes('127.0.0.1:${WEB_PORT:-14000}:80'), 'edge must bind the 14xxx band port for the platform reverse-proxy');
+  // 1PESI environment digits: PROD X000, STAGING X300, SANDBOX X400.
+  assert(dc.includes('127.0.0.1:${STAGING_PORT:-14300}:14300'), 'staging must have its own edge listener on 14300');
+  assert(dc.includes('127.0.0.1:${SANDBOX_PORT:-14400}:80'), 'sandbox must be published on 14400');
+  // Platform RULES §6: a sandbox is NEVER proxied through the production edge.
+  const edgeBlock = dc.slice(dc.indexOf('  edge:'), dc.indexOf('  edge-sandbox:'));
+  assert(!edgeBlock.includes('14400'), 'the sandbox port must not be published by the production edge');
+  assert(dc.includes('Caddyfile.sandbox'), 'the sandbox edge must use its own Caddyfile');
+  // #146: the production edge must not DEPEND on the sandbox either, or its
+  // systemd unit would start (and therefore bounce) the sandbox with it.
+  const directives = (block) => block.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+  const edgeDeps = directives(edgeBlock.slice(edgeBlock.indexOf('depends_on:')));
+  assert(!edgeDeps.includes('web-sandbox'), 'the production edge must not depend on the sandbox service');
   assert(!dc.includes(':8087:80'), 'legacy 8087 must stay retired — no publish line (1PESI migration complete)');
   assert(dc.includes('docker/Caddyfile'), 'edge must mount the mapmax Caddyfile');
+});
+
+Deno.test('systemd units keep production and sandbox independently movable (#146)', async () => {
+  const prod = await read('scripts/mapmax-stack.service');
+  const sandbox = await read('scripts/mapmax-sandbox-stack.service');
+  // Neither unit may `down` the project: that tears down the other side too.
+  for (const [name, unit] of [['production', prod], ['sandbox', sandbox]]) {
+    assert(!/podman-compose down/.test(unit), `${name} unit must not down the whole compose project (#146)`);
+  }
+  assert(/ExecStart=.*up .*edge web web-staging/.test(prod), 'production unit must own exactly edge/web/web-staging');
+  assert(!/ExecStart=.*web-sandbox/.test(prod), 'production unit must not own the sandbox');
+  assert(/ExecStart=.*up .*edge-sandbox web-sandbox/.test(sandbox), 'sandbox unit must own the sandbox services');
 });
 
 Deno.test('docker/Caddyfile routes the confinia.io hosts to the web service', async () => {

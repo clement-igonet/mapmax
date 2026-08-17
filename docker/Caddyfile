@@ -40,8 +40,15 @@
 		reverse_proxy web-staging:80
 	}
 
-	# Default (localhost:8087 during dev, container-network access).
+	# Default (localhost during dev, container-network access).
 	handle {
 		reverse_proxy web:80
 	}
+}
+
+# Staging's own listener (1PESI STAGING digit → 14300). Whatever arrives here
+# is staging, no Host matching needed; the :80 block above keeps serving
+# staging too until the platform edge is flipped.
+:14300 {
+	reverse_proxy web-staging:80
 }

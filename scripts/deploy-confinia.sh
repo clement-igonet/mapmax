@@ -14,14 +14,14 @@ DEST="${DEPLOY_DIR:-$HOME/projects/mapmax}"
 PORT="${WEB_PORT:-14000}"
 TARGET="${DEPLOY_TARGET:-all}"
 
-health_check() { # $1 = vhost, $2 = tree the served files must match
-  local host="$1" tree="$2" fail=0 served disk
+health_check() { # $1 = vhost, $2 = tree the served files must match, $3 = port (default $PORT)
+  local host="$1" tree="$2" port="${3:-$PORT}" fail=0 served disk
   for _ in $(seq 1 30); do
-    curl -sf --max-time 4 -o /dev/null "http://127.0.0.1:${PORT}/" -H "Host: ${host}" && break || sleep 2
+    curl -sf --max-time 4 -o /dev/null "http://127.0.0.1:${port}/" -H "Host: ${host}" && break || sleep 2
   done
   sleep 3
   for f in src/main.js src/config.js index.html; do
-    served=$(curl -fsS "http://127.0.0.1:${PORT}/${f}" -H "Host: ${host}" | md5sum | cut -d' ' -f1)
+    served=$(curl -fsS "http://127.0.0.1:${port}/${f}" -H "Host: ${host}" | md5sum | cut -d' ' -f1)
     disk=$(md5sum "$tree/$f" | cut -d' ' -f1)
     if [ "$served" != "$disk" ]; then
       echo "STALE: $f served=$served disk=$disk" >&2
@@ -30,7 +30,17 @@ health_check() { # $1 = vhost, $2 = tree the served files must match
       echo "ok: $f ($served)"
     fi
   done
-  [ "$fail" -eq 0 ] || { echo "deploy FAILED — ${host} does not serve the deployed tree" >&2; exit 1; }
+  [ "$fail" -eq 0 ] || { echo "deploy FAILED — ${host} on :${port} does not serve the deployed tree" >&2; exit 1; }
+}
+
+# A port that is expected to serve, but only once the systemd unit has been
+# updated to start its container — report, never fail the deploy on it.
+soft_port_check() { # $1 = vhost, $2 = port, $3 = what
+  if curl -sf --max-time 4 -o /dev/null "http://127.0.0.1:${2}/" -H "Host: ${1}"; then
+    echo "ok: ${3} answering on :${2}"
+  else
+    echo "note: ${3} not yet listening on :${2} (expected until the stack unit starts it)"
+  fi
 }
 
 # Sandbox-only branch deploy (R14): build the sandbox image straight from THIS
@@ -41,12 +51,15 @@ if [ "$TARGET" = "sandbox" ]; then
   echo "::group::sandbox-only deploy from $SRC"
   export XDG_RUNTIME_DIR="/run/user/$(id -u)"
   podman-compose -p mapmax build web-sandbox
-  systemctl --user restart mapmax-stack.service
+  # ONLY the sandbox unit (#146): restarting the production unit for a branch
+  # validation is what used to knock www out for a minute.
+  systemctl --user restart mapmax-sandbox-stack.service
   echo "::endgroup::"
   echo "::group::health check (sandbox serves this branch)"
-  health_check "sandbox.mapmax.confinia.io" "$SRC"
+  health_check "sandbox.mapmax.confinia.io" "$SRC" "${SANDBOX_PORT:-14400}"
+  health_check "sandbox.mapmax.confinia.io" "$SRC"   # also through the dual-published prod edge
   echo "::endgroup::"
-  echo "deploy-confinia: sandbox live from branch checkout — www/staging untouched"
+  echo "deploy-confinia: sandbox live from branch checkout — production never moved"
   exit 0
 fi
 
@@ -63,7 +76,10 @@ echo "::endgroup::"
 echo "::group::build + restart stack (systemd-managed)"
 cd "$DEST"
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-WEB_PORT="$PORT" podman-compose build web web-staging web-sandbox
+# NOT web-sandbox (#146): the sandbox carries whatever branch is under
+# validation, and rebuilding it here silently discarded that branch. Push main
+# to the sandbox explicitly with a workflow_dispatch on main when wanted.
+WEB_PORT="$PORT" podman-compose build web web-staging
 # The stack runs as a persistent systemd user service (mapmax-stack.service, on
 # the VM) so the rootless port-forwarder is owned by SYSTEMD, not this deploy job.
 # `podman-compose up -d` from a CI job/SSH leaves the forwarder in the caller's
@@ -76,6 +92,9 @@ echo "::endgroup::"
 
 echo "::group::health check (served == disk)"
 health_check "www.mapmax.confinia.io" "$DEST"
+# 1PESI split (staging 14300, sandbox 14400) — dual-published alongside 14000.
+soft_port_check "staging.mapmax.confinia.io" "${STAGING_PORT:-14300}" "staging edge"
+soft_port_check "sandbox.mapmax.confinia.io" "${SANDBOX_PORT:-14400}" "sandbox edge (owned by mapmax-sandbox-stack.service, untouched by this deploy)"
 echo "::endgroup::"
 
 echo "deploy-confinia: live on 127.0.0.1:${PORT} — served content matches HEAD"

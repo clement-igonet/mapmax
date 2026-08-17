@@ -498,6 +498,26 @@ if (nav.skipped) {
   assert.equal(pose.reset.pitch, 0, 'pose reset did not restore the metadata orientation (#98)');
   console.log('[e2e] pose leveller live-applies pitch/roll, read-out mirrors, persists locally (#98/#106) OK');
 
+  // #144: the manual rotation pad moves the axes the auto-fix names.
+  const pad = await page.evaluate(async () => {
+    const sv = await import('./src/streetview.js');
+    sv.setCurrentPose({ pitch: 0, roll: 0 });
+    const click = (sel, shift = false) =>
+      document.querySelector(sel).dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: shift }));
+    click('#pose-rot-pad .pad-n');
+    const afterUp = sv.getCurrentPose().pitch;
+    click('#pose-rot-pad .pad-e', true);
+    const afterRollShift = sv.getCurrentPose().roll;
+    click('#pose-rot-pad .pad-c');
+    const afterLevel = sv.getCurrentPose();
+    return { afterUp, afterRollShift, afterLevel, readout: document.getElementById('pose-rot-val').textContent };
+  });
+  assert.ok(pad.afterUp > 0, `pad ▲ must tip the photo up, got ${pad.afterUp} (#144)`);
+  assert.ok(pad.afterRollShift > pad.afterUp, `⇧-click must take a bigger step, got ${pad.afterRollShift} (#144)`);
+  assert.equal(pad.afterLevel.pitch, 0, 'centre must level the pitch (#144)');
+  assert.equal(pad.afterLevel.roll, 0, 'centre must level the roll (#144)');
+  console.log('[e2e] rotation pad nudges pitch/roll, ⇧ steps bigger, centre levels (#144) OK');
+
   // #106 pose edit mode: drags rotate the PHOTO (camera untouched), the ring
   // rolls it, Esc peels edit mode first (still inside), look-around returns.
   const edit = await page.evaluate(async () => {

@@ -398,13 +398,35 @@ body {
 
 /* Compass nudge pad (#107): fixed-resolution position moves — 30 cm per
    click, 1 m with ⇧ — for users who find the drags too sensitive. */
-#pose-pad {
+#pose-pad,
+#pose-rot-pad {
   display: grid;
-  grid-template-areas: '. n .' 'w . e' '. s .';
+  grid-template-areas: '. n .' 'w c e' '. s .';
   gap: 2px;
+  justify-content: center;
 }
 
-#pose-pad button {
+/* Standalone chip (#144): its own small opaque surface in the right column,
+   between the pose panel and the translation cluster — never inside either. */
+#pose-rot-pad {
+  position: absolute;
+  /* Immediately left of the pose panel (its rotation family), clear of the
+     panel's variable height and of the translation cluster below. */
+  top: 100px;
+  right: 310px;
+  z-index: 19;
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+#pose-rot-pad[hidden] {
+  display: none;
+}
+
+#pose-pad button,
+#pose-rot-pad button {
   width: 22px;
   height: 20px;
   padding: 0;
@@ -417,14 +439,16 @@ body {
   cursor: pointer;
 }
 
-#pose-pad button:hover {
+#pose-pad button:hover,
+#pose-rot-pad button:hover {
   background: rgb(66, 68, 76);
 }
 
-#pose-pad .pad-n { grid-area: n; }
-#pose-pad .pad-w { grid-area: w; }
-#pose-pad .pad-e { grid-area: e; }
-#pose-pad .pad-s { grid-area: s; }
+#pose-pad .pad-n, #pose-rot-pad .pad-n { grid-area: n; }
+#pose-pad .pad-w, #pose-rot-pad .pad-w { grid-area: w; }
+#pose-pad .pad-e, #pose-rot-pad .pad-e { grid-area: e; }
+#pose-pad .pad-s, #pose-rot-pad .pad-s { grid-area: s; }
+#pose-rot-pad .pad-c { grid-area: c; }
 
 #pose-rot-val,
 #pose-pos-val {

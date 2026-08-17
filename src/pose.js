@@ -60,6 +60,18 @@ export function readPoseFromExif(exif) {
   };
 }
 
+// Manual rotation nudges (#144): a fixed step per click — fine enough to
+// settle a horizon by eye, coarse enough to get there in a few clicks — with
+// a bigger step on ⇧, mirroring the translation pad (#107). Pitch and roll are
+// clamped to the API domains (±90°); yaw wraps instead.
+export const ROT_STEP_DEG = 0.5;
+export const ROT_STEP_SHIFT_DEG = 2;
+
+export function nudgeTilt(currentDeg, direction, shiftKey = false) {
+  const step = (shiftKey ? ROT_STEP_SHIFT_DEG : ROT_STEP_DEG) * Math.sign(direction || 0);
+  return clampDeg((currentDeg || 0) + step, -90, 90);
+}
+
 // localStorage key for the per-sequence pose fallback (anonymous users, #98).
 export const POSE_STORE_KEY = (seqOrPicId) => `mapmax:pose:${seqOrPicId}`;
 
