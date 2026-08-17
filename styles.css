@@ -286,6 +286,25 @@ body {
   justify-content: center;
 }
 
+/* Standalone chip (#144): its own small opaque surface in the right column,
+   between the pose panel and the translation cluster — never inside either. */
+#pose-rot-pad {
+  position: absolute;
+  /* Immediately left of the pose panel (its rotation family), clear of the
+     panel's variable height and of the translation cluster below. */
+  top: 100px;
+  right: 310px;
+  z-index: 19;
+  background: rgb(24, 25, 28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+#pose-rot-pad[hidden] {
+  display: none;
+}
+
 #pose-pad button,
 #pose-rot-pad button {
   width: 22px;

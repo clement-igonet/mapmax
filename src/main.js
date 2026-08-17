@@ -477,6 +477,7 @@ function setEditModeUI(on) {
   posePanel.hidden = !actual;
   poseRing.hidden = !actual;
   poseElev.hidden = !actual;
+  document.getElementById('pose-rot-pad').hidden = !actual; // #144, standalone chip
   minimapEl.classList.toggle('minimap-editable', actual);
   if (actual) {
     syncPosePanel();
