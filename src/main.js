@@ -3,7 +3,7 @@
 import * as maplibregl from 'maplibre-gl';
 import { OSM_STYLE_URL, START_VIEW, MAP_MAX_PITCH, STREET_BUILDINGS_RADIUS_M, STREET_DEFAULT_BLEND } from './config.js';
 import { MAPMAX_ENV } from './env.js';
-import { buildingRadiusFilter, buildingsClipEnabled, parseRadiusOverride } from './buildings.js';
+import { BUILDINGS_MIN_ZOOM, buildingRadiusFilter, buildingsClipEnabled, ensureBuildings3D, parseRadiusOverride } from './buildings.js';
 import { panoramaxSource } from './panoramax.js';
 import { mapillarySource, mapillaryToken } from './mapillary.js';
 import { commonsSource } from './commons.js';
@@ -216,7 +216,7 @@ function buildSourceLegend() {
 buildSourceLegend();
 
 map.on('style.load', () => {
-  ensureBuildings3D();
+  ensureBuildings3D(map);
   addCoverage(map);
   // A style reload re-adds coverage with default visibility — reapply the
   // legend's toggles so a hidden source stays hidden.
@@ -787,37 +787,6 @@ map.on('error', (e) => {
 // gate, so buildings show only once you're zoomed right in — near, at street
 // scale. Below z18 they'd be far clutter. No per-distance culling — the zoom
 // gate alone keeps them near (the distance budget, kept simple).
-const BUILDINGS_MIN_ZOOM = 18;
-function ensureBuildings3D() {
-  const style = map.getStyle();
-  const existing = style.layers.filter((l) => l.type === 'fill-extrusion');
-  if (existing.length) {
-    // Hold the style's own extrusions (Liberty `building-3d`) to z18+.
-    for (const l of existing) {
-      try { map.setLayerZoomRange(l.id, BUILDINGS_MIN_ZOOM, 24); } catch { /* ignore */ }
-    }
-    return;
-  }
-
-  const buildingLayer = style.layers.find((l) => l['source-layer'] === 'building');
-  if (!buildingLayer) {
-    console.warn('No building source-layer found in style; skipping 3D buildings.');
-    return;
-  }
-  map.addLayer({
-    id: 'mapmax-buildings-3d',
-    type: 'fill-extrusion',
-    source: buildingLayer.source,
-    'source-layer': 'building',
-    minzoom: BUILDINGS_MIN_ZOOM,
-    paint: {
-      'fill-extrusion-color': 'hsl(35,8%,85%)',
-      'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 6],
-      'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
-      'fill-extrusion-opacity': 0.8,
-    },
-  });
-}
 
 // Inside a photosphere the map zoom is DERIVED from the look direction (the
 // plugin re-derives it each look), so it drifts with pitch — and the z18

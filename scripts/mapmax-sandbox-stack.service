@@ -14,7 +14,7 @@
 #   cp scripts/mapmax-sandbox-stack.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now mapmax-sandbox-stack.service
 [Unit]
-Description=MapMax sandbox stack (edge-sandbox + web-sandbox)
+Description=MapMax sandbox stack (edge-sandbox + web-sandbox + api)
 After=default.target
 
 [Service]
@@ -23,8 +23,8 @@ WorkingDirectory=%h/projects/mapmax
 Environment=SANDBOX_PORT=14400
 Environment=XDG_RUNTIME_DIR=/run/user/1002
 # Only the sandbox services, and never `down` — see the production unit.
-ExecStart=/usr/bin/podman-compose up --force-recreate edge-sandbox web-sandbox
-ExecStop=/usr/bin/podman-compose stop edge-sandbox web-sandbox
+ExecStart=/usr/bin/podman-compose up --force-recreate edge-sandbox web-sandbox api
+ExecStop=/usr/bin/podman-compose stop edge-sandbox web-sandbox api
 Restart=always
 RestartSec=5
 TimeoutStopSec=40

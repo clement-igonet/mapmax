@@ -29,3 +29,43 @@ export function parseRadiusOverride(search, fallback) {
   const v = Number(m[1]);
   return Number.isFinite(v) ? v : fallback;
 }
+
+
+// The z18 near-only gate (#82): dots and 3D buildings appear together.
+export const BUILDINGS_MIN_ZOOM = 18;
+
+// 3D buildings on any map running the app's style (#154: shared between the
+// app and the headless world-band renderer, so the two scenes cannot drift).
+// Holds style-native extrusions to z18+, or synthesizes one from the building
+// source-layer with the same nullable-height guards the style hardener uses.
+export function ensureBuildings3D(map) {
+  const style = map.getStyle();
+  const existing = style.layers.filter((l) => l.type === 'fill-extrusion');
+  if (existing.length) {
+    // Hold the style's own extrusions (Liberty `building-3d`) to z18+.
+    for (const l of existing) {
+      try { map.setLayerZoomRange(l.id, BUILDINGS_MIN_ZOOM, 24); } catch { /* ignore */ }
+    }
+    return;
+  }
+
+  const buildingLayer = style.layers.find((l) => l['source-layer'] === 'building');
+  if (!buildingLayer) {
+    console.warn('No building source-layer found in style; skipping 3D buildings.');
+    return;
+  }
+  map.addLayer({
+    id: 'mapmax-buildings-3d',
+    type: 'fill-extrusion',
+    source: buildingLayer.source,
+    'source-layer': 'building',
+    minzoom: BUILDINGS_MIN_ZOOM,
+    paint: {
+      'fill-extrusion-color': 'hsl(35,8%,85%)',
+      'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 6],
+      'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+      'fill-extrusion-opacity': 0.8,
+    },
+  });
+}
+
