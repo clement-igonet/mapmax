@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>MapMax world-band renderer (#154)</title>
+    <link rel="stylesheet" href="../vendor/maplibre/maplibre-gl.css">
+    <style>html,body,#map{margin:0;width:1024px;height:768px}</style>
+  </head>
+  <body>
+    <!-- Headless-only page: builds the SAME street scene the app builds
+         (hardened style, 3D buildings, backdrop, photosphere camera) and runs
+         the app's own scanWorldStrip — so the API's band cannot drift from an
+         in-browser scan. Driven by api/server.mjs via ?lon&lat&bins. -->
+    <div id="map"></div>
+    <script type="importmap">
+      {"imports": {"maplibre-gl": "../vendor/maplibre/maplibre-gl.mjs"}}
+    </script>
+    <script type="module" src="./renderer.mjs"></script>
+  </body>
+</html>

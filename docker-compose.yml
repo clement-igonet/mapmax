@@ -36,6 +36,19 @@ services:
       # back to bouncing the sandbox (and vice versa). The dual-publish route
       # below still reaches it: Caddy resolves the upstream per request.
 
+  # World-band renderer API (#154): headless Chromium running the app's own
+  # scene code (see api/server.mjs). SANDBOX-ONLY for now — owned by
+  # mapmax-sandbox-stack.service, routed by the sandbox edge; production and
+  # Pages have no API and the app falls back to the in-browser spin. No host
+  # port. The cache volume survives recreations: bands depend only on
+  # (lon, lat, style) and rendering one costs ~a minute of headless Chromium.
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    volumes:
+      - worldband-cache:/var/cache/worldband
+
   # Sandbox edge — its OWN caddy (platform RULES §6): a sandbox must never be
   # proxied through the production edge, so a second port on `edge` would
   # satisfy the numbering and none of the isolation.
@@ -78,3 +91,6 @@ services:
     environment:
       # pass-through: defaults to http://web/ inside the test script
       - TARGET_URL
+
+volumes:
+  worldband-cache:

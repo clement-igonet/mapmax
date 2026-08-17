@@ -12,5 +12,13 @@
 }
 
 :80 {
-	reverse_proxy web-sandbox:80
+	# World-band API (#154) — resolved per request, so the api container can
+	# restart independently of this edge.
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		reverse_proxy web-sandbox:80
+	}
 }
