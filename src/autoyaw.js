@@ -244,3 +244,72 @@ export function tiltRowShift(relAzDeg, pitchDeg, rollDeg, bandDeg, stripH) {
   const a = (relAzDeg * Math.PI) / 180;
   return (((pitchDeg || 0) * Math.cos(a) + (rollDeg || 0) * Math.sin(a)) / bandDeg) * stripH;
 }
+
+// --- Second tilt signal: per-column vertical correlation (#142) --------------
+// The skyline fit fails wherever no roofline crosses the compared band —
+// trees, narrow streets, overcast glare — which in practice is MOST street
+// pictures. But a tilt displaces EVERYTHING in a column, not just the sky
+// edge: window rows, storefront lines, the curb. So correlate each photo
+// column against its world column over vertical shifts and read the
+// displacement directly. Works with zero sky; degrades to NaN per column when
+// the texture is too flat to localize (blank wall, tarmac).
+
+// Luminance profile of one column, mean-removed for the correlation.
+function columnProfile(strip, x) {
+  const { data, width, height } = strip;
+  const out = new Float32Array(height);
+  let mean = 0;
+  for (let y = 0; y < height; y++) {
+    const i = (y * width + x) * 4;
+    out[y] = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+    mean += out[y];
+  }
+  mean /= height;
+  for (let y = 0; y < height; y++) out[y] -= mean;
+  return out;
+}
+
+/**
+ * Best vertical shift (rows, + = photo content sits LOWER than the world's)
+ * aligning photo column x onto world column x, by normalized cross-correlation
+ * over ±maxShift rows. NaN when the columns carry too little texture or the
+ * peak is weak — a flat wall must not vote.
+ */
+export function columnRowShift(photo, world, x, maxShift, minScore = 0.5) {
+  const a = columnProfile(photo, x);
+  const b = columnProfile(world, x);
+  const n = a.length;
+  let best = NaN;
+  let bestR = minScore; // anything weaker never wins
+  for (let s = -maxShift; s <= maxShift; s++) {
+    let sab = 0, saa = 0, sbb = 0, count = 0;
+    for (let y = Math.max(0, s); y < Math.min(n, n + s); y++) {
+      const av = a[y];
+      const bv = b[y - s];
+      sab += av * bv; saa += av * av; sbb += bv * bv; count++;
+    }
+    if (count < n / 2) continue;
+    const denom = Math.sqrt(saa * sbb);
+    if (denom < 1e-6) continue; // flat texture: no vote
+    const r = sab / denom;
+    if (r > bestR) { bestR = r; best = s; }
+  }
+  return best;
+}
+
+/**
+ * Per-column tilt differences (degrees) from vertical correlation — the same
+ * shape fitTilt() consumes, so both signals feed one fit. Sampling every
+ * `stride` columns keeps it cheap; the fit never needed every column anyway.
+ */
+export function columnDiffProfile(photo, world, bandDeg, { maxShiftDeg = 8, stride = 2, minScore = 0.5 } = {}) {
+  const n = photo.width;
+  const rowsPerDeg = photo.height / bandDeg;
+  const maxShift = Math.max(2, Math.round(maxShiftDeg * rowsPerDeg));
+  const out = new Float32Array(n).fill(NaN);
+  for (let x = 0; x < n; x += stride) {
+    const s = columnRowShift(photo, world, x, maxShift, minScore);
+    if (Number.isFinite(s)) out[x] = s / rowsPerDeg;
+  }
+  return out;
+}

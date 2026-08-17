@@ -207,3 +207,48 @@ Deno.test('axisSignificant: each axis is judged against its own uncertainty (#14
   assert(!axisSignificant(f.pitchDeg, f.sePitch), 'an absent pitch must not be invented');
   assert(tiltIsUsable(f), 'one significant axis makes the fit usable');
 });
+
+Deno.test('columnRowShift / columnDiffProfile: tilt read from façade texture, no sky needed (#142)', async () => {
+  const { columnDiffProfile, columnRowShift, fitTilt } = await import('../../src/autoyaw.js');
+  const W = 90, H = 96, BAND = 60;
+  // A textured "façade" with horizontal features every few rows (window lines),
+  // and NO sky anywhere: the skyline signal would be completely blind here.
+  const texRow = (y) => 120 + 90 * Math.sin(y * 0.7) + 40 * Math.sin(y * 0.13 + 1);
+  const make = (shiftForCol) => {
+    const data = new Uint8ClampedArray(W * H * 4);
+    for (let x = 0; x < W; x++) {
+      const dy = shiftForCol(x);
+      for (let y = 0; y < H; y++) {
+        const v = Math.max(0, Math.min(255, texRow(y - dy)));
+        const i = (y * W + x) * 4;
+        data[i] = data[i + 1] = data[i + 2] = v;
+        data[i + 3] = 255;
+      }
+    }
+    return { data, width: W, height: H };
+  };
+  const world = make(() => 0);
+
+  // Uniform shift: every sampled column reads it back exactly.
+  const photoUniform = make(() => 5);
+  assertEquals(columnRowShift(photoUniform, world, 0, 12), 5);
+  assertEquals(columnRowShift(photoUniform, world, 44, 12), 5);
+
+  // A pitch+roll pattern (in rows) recovered through the SAME fit the skyline
+  // uses — proving the two signals are interchangeable inputs.
+  const rowsPerDeg = H / BAND;
+  const pitch = 3, roll = -2;
+  const rel = new Float32Array(W);
+  for (let x = 0; x < W; x++) rel[x] = (x * 360) / W - 180;
+  const photoTilt = make((x) => Math.round((pitch * Math.cos((rel[x] * Math.PI) / 180) + roll * Math.sin((rel[x] * Math.PI) / 180)) * rowsPerDeg));
+  const diff = columnDiffProfile(photoTilt, world, BAND, { stride: 1 });
+  const fitted = fitTilt(diff, rel);
+  assertAlmostEquals(fitted.pitchDeg, pitch, 0.45); // rounding to whole rows costs a little
+  assertAlmostEquals(fitted.rollDeg, roll, 0.45);
+
+  // A flat (textureless) strip must not vote at all.
+  const blank = { data: new Uint8ClampedArray(W * H * 4).fill(128), width: W, height: H };
+  assert(Number.isNaN(columnRowShift(blank, world, 10, 12)), 'flat texture must return NaN, never a fake shift');
+  const blankDiff = columnDiffProfile(blank, world, BAND);
+  assert([...blankDiff].every(Number.isNaN), 'no column of a blank strip may vote');
+});

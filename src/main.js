@@ -18,7 +18,7 @@ import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { nudgeTilt } from './pose.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 import { BAND_DEG, SCAN_BINS, STRIP_H, photoStrip, poseStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
-import { axisSignificant, fitTilt, isConfident, proposeYawDelta } from './autoyaw.js';
+import { axisSignificant, columnDiffProfile, fitTilt, isConfident, proposeYawDelta } from './autoyaw.js';
 import { setupLicenseGate } from './licensegate.js';
 
 // The sources this build browses (#112) — Panoramax is the backbone (first
@@ -483,26 +483,38 @@ function measureAxis(axis) {
       autoApply.textContent = 'Apply';
       return;
     }
-    const aligned = mustAlign
-      ? stripProfiles(poseStrip(posedPhotoStrip(), { dYawDeg: -yawFix.deltaDeg, centreAz: currentPanoYaw(), bandDeg: BAND_DEG }))
-      : photo;
+    const alignedStrip = mustAlign
+      ? poseStrip(posedPhotoStrip(), { dYawDeg: -yawFix.deltaDeg, centreAz: currentPanoYaw(), bandDeg: BAND_DEG })
+      : posedPhotoStrip();
+    const aligned = stripProfiles(alignedStrip);
     const n = world.skyline.length;
     const centre = currentPanoYaw() + (mustAlign ? yawFix.deltaDeg : 0);
+    // TWO tilt signals into ONE fit (#142): the skyline where a roofline
+    // crosses the band, and per-column vertical correlation of the façade
+    // texture everywhere else — most street pictures have no usable skyline
+    // at all, which is what kept Pitch/Roll reading 'not measurable'.
+    const columnDiff = columnDiffProfile(alignedStrip, autoScan.world, BAND_DEG);
     const diff = new Float32Array(n);
     const relAz = new Float32Array(n);
+    let fromSky = 0;
+    let fromFacade = 0;
     for (let j = 0; j < n; j++) {
-      diff[j] = (aligned.skyline[j] - world.skyline[j]) * BAND_DEG;
+      const sky = (aligned.skyline[j] - world.skyline[j]) * BAND_DEG;
+      if (Number.isFinite(sky)) { diff[j] = sky; fromSky++; }
+      else if (Number.isFinite(columnDiff[j])) { diff[j] = columnDiff[j]; fromFacade++; }
+      else diff[j] = NaN;
       relAz[j] = ((((((j * 360) / n - centre) % 360) + 540) % 360) - 180);
     }
     const t = fitTilt(diff, relAz);
+    const signalTxt = `${fromSky} skyline + ${fromFacade} façade columns`;
     const yawNote = mustAlign ? ` Measured after aligning the bands by ${degTxt(yawFix.deltaDeg)} of yaw.` : '';
     const coef = axis === 'Pitch' ? t.pitchDeg : t.rollDeg;
     const se = axis === 'Pitch' ? t.sePitch : t.seRoll;
     const pose = getCurrentPose() || { pitch: 0, roll: 0 };
     if (!Number.isFinite(coef)) {
-      setVerdict(`${axis} — not measurable`, `Only ${t.samples} usable skyline columns in the compared band; the roofline is hidden here. The photo is unchanged.${yawNote}`);
+      setVerdict(`${axis} — not measurable`, `Too little shared structure: ${signalTxt}, ${t.samples} usable. Neither the roofline nor the façade texture localizes here. The photo is unchanged.${yawNote}`);
     } else if (!axisSignificant(coef, se)) {
-      setVerdict(`${axis} — within the noise`, `Measured ${degTxt(coef)} ±${se.toFixed(1)}° over ${t.samples} skyline columns — not distinguishable from zero. The photo is unchanged.${yawNote}`);
+      setVerdict(`${axis} — within the noise`, `Measured ${degTxt(coef)} ±${se.toFixed(1)}° over ${signalTxt} — not distinguishable from zero. The photo is unchanged.${yawNote}`);
     } else {
       const target = (axis === 'Pitch' ? pose.pitch : pose.roll) + coef;
       const how = axis === 'Pitch'
@@ -512,7 +524,7 @@ function measureAxis(axis) {
         label: `${axis} ${degTxt(coef)}`,
         apply: () => setCurrentPose(axis === 'Pitch' ? { pitch: target } : { roll: target }),
       };
-      setVerdict(`${axis} ${degTxt(coef)}`, `${how}, ±${se.toFixed(1)}° over ${t.samples} skyline columns.${yawNote}`);
+      setVerdict(`${axis} ${degTxt(coef)}`, `${how}, ±${se.toFixed(1)}° over ${signalTxt}.${yawNote}`);
     }
   }
   autoApply.disabled = !autoPending;
