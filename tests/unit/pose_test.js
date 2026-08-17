@@ -186,3 +186,20 @@ Deno.test('composePoseGesture: gestures keep the matrix orthonormal (no drift)',
   for (const v of [r, f, u]) assertAlmostEquals(dot(v, v), 1, 1e-6);
   assertAlmostEquals(dot(r, f), 0, 1e-6);
 });
+
+
+Deno.test('nudgeTilt: fixed step, bigger with shift, clamped to the API domain (#144)', async () => {
+  const { nudgeTilt, ROT_STEP_DEG, ROT_STEP_SHIFT_DEG } = await import('../../src/pose.js');
+  assertEquals(nudgeTilt(0, 1), ROT_STEP_DEG);
+  assertEquals(nudgeTilt(0, -1), -ROT_STEP_DEG);
+  assertEquals(nudgeTilt(1, 1, true), 1 + ROT_STEP_SHIFT_DEG);
+  assertEquals(nudgeTilt(-3.5, -1, true), -3.5 - ROT_STEP_SHIFT_DEG);
+  // Undefined/zero current value is treated as level, not NaN.
+  assertEquals(nudgeTilt(undefined, 1), ROT_STEP_DEG);
+  // A tilt can never leave the pitch/roll domain, however many clicks.
+  assertEquals(nudgeTilt(90, 1), 90);
+  assertEquals(nudgeTilt(-90, -1, true), -90);
+  assertEquals(nudgeTilt(89.8, 1, true), 90);
+  // No direction → no movement (a stray click on the pad's gaps).
+  assertEquals(nudgeTilt(4, 0), 4);
+});

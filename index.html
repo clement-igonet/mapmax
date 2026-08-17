@@ -38,6 +38,17 @@
       <div class="pose-row" id="pose-readout">
         <span id="pose-rot-val">Pitch 0° · Roll 0° · Yaw 0°</span>
       </div>
+      <!-- Rotation nudge pad (#144): the axes the auto-fix names, adjustable
+           by hand — ▲▼ tilt up/down (pitch), ◀▶ fall left/right (roll),
+           centre levels both. 0.5° per click, 2° with ⇧, like the
+           translation pad (#107). -->
+      <div id="pose-rot-pad" title="Rotate the panorama: 0.5° per click, ⇧-click = 2°">
+        <button type="button" class="pad-n" data-pitch="1" title="Tip the photo up (pitch +)">▲</button>
+        <button type="button" class="pad-w" data-roll="-1" title="Let it fall left (roll −)">◀</button>
+        <button type="button" class="pad-c" data-level="1" title="Level it: pitch and roll back to 0°">⊙</button>
+        <button type="button" class="pad-e" data-roll="1" title="Let it fall right (roll +)">▶</button>
+        <button type="button" class="pad-s" data-pitch="-1" title="Tip the photo down (pitch −)">▼</button>
+      </div>
       <div class="pose-actions">
         <button type="button" id="pose-reset">Reset</button>
       </div>
