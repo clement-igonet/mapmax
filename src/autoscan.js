@@ -181,7 +181,19 @@ export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 
   const ctl = new AbortController();
   const t0 = performance.now();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  const ticker = onWaiting ? setInterval(() => onWaiting(Math.round((performance.now() - t0) / 1000)), 1000) : 0;
+  // Prove MOTION while the render runs (#154): poll /status every 2 s and
+  // hand {state, pct} to the caller alongside the elapsed seconds.
+  let lastStatus = null;
+  const ticker = onWaiting ? setInterval(async () => {
+    const secs = Math.round((performance.now() - t0) / 1000);
+    if (secs % 2 === 0) {
+      try {
+        const r = await fetch(`/api/worldband/status?lon=${lon}&lat=${lat}&bins=${bins}`);
+        if (r.ok) lastStatus = await r.json();
+      } catch { /* keep the last known status */ }
+    }
+    onWaiting(secs, lastStatus);
+  }, 1000) : 0;
   try {
     let res;
     try {

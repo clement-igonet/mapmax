@@ -551,8 +551,16 @@ async function fixAxis(axis) {
       let world;
       try {
         world = await fetchWorldStrip(scanLon, scanLat, {
-          onWaiting: (secs) => {
-            if (secs >= 2) poseStatus.textContent = `Building the vector world server-side… ${secs}s (first visit to this spot takes ~2 min; the view will not move)`;
+          onWaiting: (secs, st) => {
+            if (secs < 2) return;
+            // Real progress, not faith: the /status endpoint reports what the
+            // renderer is actually doing (#154).
+            const what = st?.state === 'rendering' && Number.isFinite(st.pct)
+              ? `server rendering… ${st.pct}%`
+              : st?.state === 'queued'
+                ? 'queued behind another render'
+                : 'server rendering';
+            poseStatus.textContent = `Building the vector world equirect — ${what} · ${secs}s (first visit here takes ~3 min; the view will not move)`;
           },
         });
       } catch (err) {
