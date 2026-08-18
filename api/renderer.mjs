@@ -59,6 +59,8 @@ try {
     setBlend: (a) => ps.blend(a),
     blendAfter: 0,
     shouldAbort: () => false,
+    // Live progress for the /status endpoint (#154): the server polls this.
+    onProgress: (p, phase) => { window.__progress = { pct: Math.round(p * 100), phase }; },
   });
   const c = document.createElement('canvas');
   c.width = strip.width;
