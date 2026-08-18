@@ -187,8 +187,10 @@ export function onPictureClick(map, handler) {
   });
 }
 
-// The source adapter (#112) — read-only: no editing, no HD tiling; sequences
-// exist for walking and the sun-compass corroboration.
+// The source adapter (#112). editable: 🔧 Adjust means LOCAL, browser-only
+// corrections since the read-oriented pivot (#111) — those work for any
+// source, and Mapillary's SfM poses are good but not perfect. (Server
+// write-back is a different concept and lives outside MapMax entirely.)
 export const mapillarySource = {
   id: 'mapillary',
   name: 'Mapillary',
@@ -196,7 +198,7 @@ export const mapillarySource = {
   // Same palette as the map dots: teal 360°s, green flats.
   dotColors: { equirectangular: '#00838f', flat: '#05cb63' },
   layers: [SEQUENCES_LAYER, PICTURES_LAYER],
-  capabilities: { editable: false, hdTiles: false, sequences: true },
+  capabilities: { editable: true, hdTiles: false, sequences: true },
   addCoverage: addMapillaryLayers,
   onPictureClick,
   getPicture,
