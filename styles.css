@@ -177,7 +177,7 @@ body {
   top: 54px;
   right: 50px;
   z-index: 20;
-  background: rgba(20, 20, 24, 0.85);
+  background: rgb(24, 25, 28); /* #100 audit: opaque */
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
@@ -187,7 +187,7 @@ body {
 }
 
 #exit-street:hover {
-  background: rgba(50, 50, 60, 0.95);
+  background: rgb(50, 52, 60); /* #100 audit: opaque */
 }
 
 #pose-panel {
@@ -246,9 +246,15 @@ body {
   gap: 8px;
 }
 
+/* #100 AUDIT (fourth recurrence, 2026-08-18): every control that floats over
+   the WebGL canvas is now FULLY OPAQUE, including its hover state. Translucent
+   backgrounds force a recomposite against the GL surface on every hover
+   invalidation, which is exactly where chips stop painting on the affected
+   GPU/Chrome. Equivalent colors were computed over the dark chip base, so
+   nothing changes visually. */
 .pose-actions button {
   flex: 1;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgb(53, 55, 60); /* was rgba(255,255,255,.12) over the chip base */
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px;
@@ -258,7 +264,7 @@ body {
 }
 
 .pose-actions button:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgb(76, 78, 85); /* was rgba(255,255,255,.22) over the chip base */
 }
 
 /* Auto-fix orientation preview (#142): two unrolled bands, map over photo.
@@ -581,7 +587,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
-  background: rgba(20, 20, 24, 0.85);
+  background: rgb(24, 25, 28); /* #100 audit: opaque */
   color: #fff;
   padding: 8px 14px;
   border-radius: 8px;
