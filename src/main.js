@@ -17,7 +17,7 @@ import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
 import { nudgeTilt, offsetLngLat } from './pose.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
-import { BAND_DEG, SCAN_BINS, STRIP_H, fetchWorldStrip, photoStrip, poseStrip, scanWorldStrip, stripProfiles } from './autoscan.js';
+import { BAND_DEG, SCAN_BINS, STRIP_H, fetchWorldStrip, photoStrip, poseStrip, stripProfiles } from './autoscan.js';
 import { axisSignificant, columnDiffProfile, fitTilt, isConfident, proposeYawDelta } from './autoyaw.js';
 import { setupLicenseGate } from './licensegate.js';
 
@@ -538,32 +538,30 @@ async function fixAxis(axis) {
   setAutoBusy(true);
   try {
     if (!autoScan || autoScan.picId !== currentPic.id) {
-      const scanPicId = currentPic.id;
-      // The mapmax API first (#154): a cached band arrives in milliseconds and
-      // nothing on screen moves. A miss (or no API — production, Pages) falls
-      // back to the in-browser spin, while the server keeps rendering so the
-      // next attempt here is instant.
-      poseStatus.textContent = 'Fetching the vector world…';
+      // The world equirect comes from the mapmax API, full stop (#154 — the
+      // user's model: the server builds the MapLibre-world equirect, the app
+      // just compares equirects). Cached spots answer instantly; a first
+      // visit waits on the server render with a live counter — the view
+      // never moves either way. No API in this environment → say so.
+      poseStatus.textContent = 'Fetching the vector world equirect…';
       const o = getCurrentPositionOffset();
       const [scanLon, scanLat] = o && (o.e || o.n)
         ? offsetLngLat(currentPic.lon, currentPic.lat, o.e, o.n)
         : [currentPic.lon, currentPic.lat];
-      let world = await fetchWorldStrip(scanLon, scanLat);
-      if (world) {
-        poseStatus.textContent = POSE_STATUS_DEFAULT;
-      } else {
-        poseStatus.textContent = `Scanning the vector world for ${axis} — the view spins once…`;
-        world = await scanWorldStrip(map, ps, {
-          setBlend,
-          blendAfter: sliderToBlend(blendSlider.value),
-          shouldAbort: () => currentPic?.id !== scanPicId || !isStreetMode(),
-          onProgress: (p, phase) => {
-            poseStatus.textContent = phase === 'warming'
-              ? `Loading the vector world around this spot… ${Math.round(p * 100)}%`
-              : `Scanning the vector world… ${Math.round(p * 100)}%`;
+      let world;
+      try {
+        world = await fetchWorldStrip(scanLon, scanLat, {
+          onWaiting: (secs) => {
+            if (secs >= 2) poseStatus.textContent = `Building the vector world server-side… ${secs}s (first visit to this spot takes ~2 min; the view will not move)`;
           },
         });
+      } catch (err) {
+        poseStatus.textContent = err.noApi
+          ? '🧭 needs the world-band API, which this environment does not have — corrections run on the sandbox.'
+          : `World-band API failed: ${err.message}. Press 🧭 again to retry.`;
+        return;
       }
+      poseStatus.textContent = POSE_STATUS_DEFAULT;
       const baseYaw = currentPanoYaw();
       autoScan = { world, photo: await photoStrip(url, baseYaw), baseYaw, picId: currentPic.id };
     }

@@ -166,28 +166,40 @@ export async function photoStrip(imageUrl, panoYaw, { bins = SCAN_BINS } = {}) {
 }
 
 /**
- * The world band from the mapmax API (#154), when one is deployed: a cache
- * hit answers in milliseconds where the in-browser spin takes tens of
- * seconds. `budgetMs` keeps a cache MISS from stalling the UI — the fetch is
- * aborted and the caller falls back to the spin, but the server finishes the
- * render anyway (single-flight), so the NEXT attempt at this spot is instant.
- * Returns null wherever there is no API (production, Pages, offline).
+ * The world band from the mapmax API (#154) — the ONLY source for the app:
+ * the corrector compares two equirects, and building the world one is the
+ * server's job (the in-page camera spin is retired from the app; it lives on
+ * solely inside the API's own headless renderer). A cached spot answers in
+ * well under a second; a first visit blocks while the server renders
+ * (~2 min), with `onWaiting(seconds)` ticking so the UI can say so — and the
+ * view never moves either way.
+ *
+ * Throws on failure; `error.noApi` is true when there is no API at all in
+ * this environment (production, Pages, offline).
  */
-export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, budgetMs = 4000 } = {}) {
+export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 360000, onWaiting } = {}) {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), budgetMs);
+  const t0 = performance.now();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  const ticker = onWaiting ? setInterval(() => onWaiting(Math.round((performance.now() - t0) / 1000)), 1000) : 0;
   try {
-    const res = await fetch(`/api/worldband?lon=${lon}&lat=${lat}&bins=${bins}`, { signal: ctl.signal });
-    if (!res.ok) return null;
+    let res;
+    try {
+      res = await fetch(`/api/worldband?lon=${lon}&lat=${lat}&bins=${bins}`, { signal: ctl.signal });
+    } catch (err) {
+      const e = new Error('no world-band API reachable in this environment');
+      e.noApi = true;
+      throw e;
+    }
+    if (!res.ok) throw new Error(`world-band API answered ${res.status}`);
     const bmp = await createImageBitmap(await res.blob());
     const c = scratch(bmp.width, bmp.height);
     const ctx = c.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(bmp, 0, 0);
     return ctx.getImageData(0, 0, bmp.width, bmp.height);
-  } catch {
-    return null; // no API here, or a cold cache — the spin covers it
   } finally {
     clearTimeout(timer);
+    if (ticker) clearInterval(ticker);
   }
 }
 
