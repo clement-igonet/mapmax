@@ -41,6 +41,9 @@ const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--no-san
 // a burst of identical requests costs one render.
 const inFlight = new Map();
 let chain = Promise.resolve();
+// Live render state per key, for GET /api/worldband/status (#154): a client
+// waiting minutes deserves proof of motion, not a spinner of faith.
+const progress = new Map(); // key -> { state: 'queued'|'rendering', pct }
 
 function renderKey(lon, lat, bins) {
   // 5 decimals ≈ 1.1 m — GPS noise makes finer keys pure cache misses.
@@ -52,11 +55,19 @@ async function renderBand(lon, lat, bins) {
   const file = path.join(CACHE, `${key}.png`);
   try { await stat(file); return file; } catch { /* miss */ }
   if (!inFlight.has(key)) {
+    progress.set(key, { state: 'queued', pct: 0 });
     const job = chain.then(async () => {
       try { await stat(file); return file; } catch { /* still a miss */ }
+      progress.set(key, { state: 'rendering', pct: 0 });
       const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
       page.on('pageerror', (e) => console.error('renderer pageerror:', String(e)));
       page.on('console', (m) => { if (m.type() === 'error') console.error('renderer console:', m.text().slice(0, 300)); });
+      const ticker = setInterval(async () => {
+        try {
+          const p = await page.evaluate(() => window.__progress);
+          if (p) progress.set(key, { state: 'rendering', pct: p.pct });
+        } catch { /* page mid-navigation — keep the last value */ }
+      }, 1000);
       try {
         await page.goto(`http://127.0.0.1:${PORT}/api/renderer.html?lon=${lon}&lat=${lat}&bins=${bins}`, { waitUntil: 'load', timeout: 60000 });
         await page.waitForFunction('window.__worldband', null, { timeout: RENDER_TIMEOUT_MS });
@@ -65,13 +76,14 @@ async function renderBand(lon, lat, bins) {
         await writeFile(file, Buffer.from(res.dataUrl.split(',')[1], 'base64'));
         return file;
       } finally {
+        clearInterval(ticker);
         await page.close().catch(() => {});
       }
     });
     // Sequence the NEXT job after this one whatever happens — a rejected job
     // must fail its requesters, never poison the queue.
     chain = job.catch(() => {});
-    inFlight.set(key, job.finally(() => inFlight.delete(key)));
+    inFlight.set(key, job.finally(() => { inFlight.delete(key); progress.delete(key); }));
   }
   return inFlight.get(key);
 }
@@ -94,6 +106,17 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   try {
     if (url.pathname === '/healthz') { res.writeHead(200).end('ok'); return; }
+    if (url.pathname === '/api/worldband/status') {
+      const lon = Number(url.searchParams.get('lon'));
+      const lat = Number(url.searchParams.get('lat'));
+      const bins = Math.min(360, Math.max(36, Number(url.searchParams.get('bins')) || 180));
+      const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) { res.writeHead(400, headers).end('{}'); return; }
+      const key = renderKey(lon, lat, bins);
+      try { await stat(path.join(CACHE, `${key}.png`)); res.writeHead(200, headers).end(JSON.stringify({ state: 'cached' })); return; } catch { /* not cached */ }
+      res.writeHead(200, headers).end(JSON.stringify(progress.get(key) || { state: 'idle' }));
+      return;
+    }
     if (url.pathname === '/api/worldband') {
       const lon = Number(url.searchParams.get('lon'));
       const lat = Number(url.searchParams.get('lat'));
