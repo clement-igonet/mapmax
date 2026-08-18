@@ -165,6 +165,32 @@ export async function photoStrip(imageUrl, panoYaw, { bins = SCAN_BINS } = {}) {
   return ctx.getImageData(0, 0, bins, STRIP_H);
 }
 
+/**
+ * The world band from the mapmax API (#154), when one is deployed: a cache
+ * hit answers in milliseconds where the in-browser spin takes tens of
+ * seconds. `budgetMs` keeps a cache MISS from stalling the UI — the fetch is
+ * aborted and the caller falls back to the spin, but the server finishes the
+ * render anyway (single-flight), so the NEXT attempt at this spot is instant.
+ * Returns null wherever there is no API (production, Pages, offline).
+ */
+export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, budgetMs = 4000 } = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), budgetMs);
+  try {
+    const res = await fetch(`/api/worldband?lon=${lon}&lat=${lat}&bins=${bins}`, { signal: ctl.signal });
+    if (!res.ok) return null;
+    const bmp = await createImageBitmap(await res.blob());
+    const c = scratch(bmp.width, bmp.height);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bmp, 0, 0);
+    return ctx.getImageData(0, 0, bmp.width, bmp.height);
+  } catch {
+    return null; // no API here, or a cold cache — the spin covers it
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Both features of a strip, ready for proposeYawDelta().
 export const stripProfiles = (strip) => ({ skyline: skylineProfile(strip), edge: edgeProfile(strip) });
 
