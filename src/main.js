@@ -8,7 +8,7 @@ import { panoramaxSource } from './panoramax.js';
 import { mapillarySource, mapillaryToken } from './mapillary.js';
 import { commonsSource } from './commons.js';
 import { registerSource, addCoverage, onPictureClick, getPicture, isEditable, allSources, sourceOf, setSourceVisible, encodePicRef, decodePicRef } from './sources.js';
-import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
+import { _photosphere, applyPoseGesture, enterStreetView, exitStreetView, flipCurrentPano, getCurrentPose, getCurrentPositionOffset, isPoseEditMode, isStreetMode, nudgeCurrentPosition, onPhotoStatus, onPictureChanged, resetCurrentPosition, setBlend, setCurrentPose, setPoseEditMode } from './streetview.js';
 import { isEquirectangular, originalImageUrl, picBadge, sliderToBlend } from './target.js';
 import { setupNavigation } from './navigation.js';
 import { setupControls } from './controls.js';
@@ -113,6 +113,14 @@ function renderPicInfo(pic) {
   picInfo.hidden = false;
 }
 onPictureChanged(renderPicInfo);
+
+// A panorama whose image fails to load renders as a TRANSPARENT sphere — the
+// vector world shows through and nothing says why (#163). Say why.
+onPhotoStatus(({ ok, pic, reason }) => {
+  if (ok || !pic) return;
+  const src = sourceOf(pic)?.name || 'this source';
+  status(`Photo not loaded — ${reason}. You are seeing the vector world only. Try “View original ↗” above, press 🧭 again later, or Esc and pick another picture (${src}).`);
+});
 
 // Deep-link (#54): keep ?pic=<id>&pv=<yaw>_<pitch> in the URL so reloading or
 // sharing returns you to the same photosphere (and look direction) or the map.

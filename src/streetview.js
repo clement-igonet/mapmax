@@ -24,6 +24,32 @@ export const currentPicture = () => current;
 export function onPictureChanged(cb) {
   listeners.push(cb);
 }
+
+// Whether the panorama IMAGE actually loaded (#163). The plugin's enter()
+// calls _loadTexture() without an error callback, so a failed image is
+// swallowed and the sphere renders its 1×1 transparent placeholder: you see
+// the vector world, no photo, and no explanation (user report). Until the
+// plugin propagates it upstream, verify the same URL ourselves — the browser
+// cache makes the second request nearly free — and report the verdict.
+const photoListeners = [];
+export function onPhotoStatus(cb) {
+  photoListeners.push(cb);
+}
+function verifyPhoto(url, pic) {
+  if (!url) {
+    for (const cb of photoListeners) cb({ ok: false, pic, reason: 'this picture carries no image asset' });
+    return;
+  }
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  const report = (ok, reason) => {
+    if (current?.id !== pic.id) return; // moved on — the verdict is stale
+    for (const cb of photoListeners) cb({ ok, pic, url, reason });
+  };
+  img.onload = () => report(true);
+  img.onerror = () => report(false, 'the image could not be fetched (expired link, CORS, or offline)');
+  img.src = url;
+}
 const emit = (pic) => {
   for (const cb of listeners) cb(pic);
 };
@@ -362,6 +388,7 @@ export async function enterStreetView(map, pic) {
   } else if (photosphere.mode === 'outside') {
     photosphere.enter(target);
   }
+  verifyPhoto(target.imageUrl, pic); // #163: never fail silently to a grey world
   emit(pic);
   return pic;
 }
