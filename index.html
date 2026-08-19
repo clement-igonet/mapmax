@@ -50,6 +50,20 @@
     <div id="pose-ring" hidden>
       <div id="pose-ring-handle" title="Turn to roll the photo"></div>
     </div>
+    <!-- Rotation nudge pad (#144): its OWN small chip, deliberately NOT a
+         child of the pose panel — every extra surface added to that panel has
+         eventually stopped it rasterizing over the WebGL canvas (#100), and a
+         taller panel also collides with the translation cluster below it.
+         ROTATION controls stay grouped here (with the ring/flip family),
+         distinct from the TRANSLATION cluster (#pose-elev). ▲▼ pitch,
+         ◀▶ roll, centre levels both; 0.5°/click, ⇧ = 2°. -->
+    <div id="pose-rot-pad" hidden title="Rotate the panorama: 0.5° per click, ⇧-click = 2°">
+      <button type="button" class="pad-n" data-pitch="1" title="Tip the photo up (pitch +)">▲</button>
+      <button type="button" class="pad-w" data-roll="-1" title="Let it fall left (roll −)">◀</button>
+      <button type="button" class="pad-c" data-level="1" title="Level it: pitch and roll back to 0°">⊙</button>
+      <button type="button" class="pad-e" data-roll="1" title="Let it fall right (roll +)">▶</button>
+      <button type="button" class="pad-s" data-pitch="-1" title="Tip the photo down (pitch −)">▼</button>
+    </div>
     <!-- TRANSLATION cluster (#107), right of the rotation ring: everything
          that MOVES the panorama — compass arrows (lon/lat, 30 cm per click,
          ⇧ = 1 m), the elevation scale (−3 … +6 m) and the Δ read-outs. -->

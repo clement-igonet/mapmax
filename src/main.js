@@ -15,6 +15,7 @@ import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
+import { nudgeTilt } from './pose.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
 import { setupLicenseGate } from './licensegate.js';
 
@@ -351,6 +352,22 @@ function syncPosePanel() {
 }
 onPictureChanged(() => syncPosePanel());
 
+// Rotation nudge pad (#144): the manual counterpart to the axes the pose
+// read-out names — and the fallback when a measurement is inconclusive.
+document.getElementById('pose-rot-pad').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || !getCurrentPose()) return;
+  if (btn.dataset.level) {
+    setCurrentPose({ pitch: 0, roll: 0 }); // level, leaving the yaw alone
+  } else {
+    const pose = getCurrentPose();
+    if (btn.dataset.pitch) setCurrentPose({ pitch: nudgeTilt(pose.pitch, +btn.dataset.pitch, e.shiftKey) });
+    if (btn.dataset.roll) setCurrentPose({ roll: nudgeTilt(pose.roll, +btn.dataset.roll, e.shiftKey) });
+  }
+  syncPosePanel();
+  syncRing();
+});
+
 document.getElementById('pose-reset').addEventListener('click', () => {
   setCurrentPose({ pitch: 0, roll: 0, yaw: 0 });
   resetCurrentPosition(); // #107: back to the GPS position and default eye height
@@ -460,6 +477,7 @@ function setEditModeUI(on) {
   posePanel.hidden = !actual;
   poseRing.hidden = !actual;
   poseElev.hidden = !actual;
+  document.getElementById('pose-rot-pad').hidden = !actual; // #144, standalone chip
   minimapEl.classList.toggle('minimap-editable', actual);
   if (actual) {
     syncPosePanel();
