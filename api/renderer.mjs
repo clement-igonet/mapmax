@@ -14,6 +14,10 @@ const TRANSPARENT =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
 const done = (result) => { window.__worldband = result; };
+// The setup phase (style, tiles, photosphere entry) takes tens of seconds
+// under software GL and used to report nothing — the client showed a frozen
+// '0%' before the scan had even begun (#164). Publish it.
+const phase = (name, pct = 0) => { window.__progress = { pct, phase: name }; };
 
 try {
   const q = new URLSearchParams(location.search);
@@ -22,6 +26,7 @@ try {
   const bins = Math.min(360, Math.max(36, Number(q.get('bins')) || SCAN_BINS));
   if (!Number.isFinite(lon) || !Number.isFinite(lat)) throw new Error('lon/lat required');
 
+  phase('loading the map style');
   const style = hardenStyle(await (await fetch(OSM_STYLE_URL)).json());
   const map = new maplibregl.Map({
     container: 'map',
@@ -32,6 +37,7 @@ try {
     centerClampedToGround: false,
     interactive: false,
   });
+  phase('loading map tiles');
   await new Promise((r) => map.on('load', r));
   ensureBuildings3D(map);
   applyStreetBackdrop(map);
@@ -43,6 +49,7 @@ try {
     imageUrl: TRANSPARENT,
     exitView: { center: target.lngLat, zoom: 17, pitch: 45, bearing: 0 },
   });
+  phase('entering the scene');
   ps.enter(target);
   await new Promise((resolve, reject) => {
     const t0 = performance.now();
@@ -54,13 +61,14 @@ try {
     tick();
   });
 
+  phase('scanning', 0);
   const strip = await scanWorldStrip(map, ps, {
     bins,
     setBlend: (a) => ps.blend(a),
     blendAfter: 0,
     shouldAbort: () => false,
     // Live progress for the /status endpoint (#154): the server polls this.
-    onProgress: (p, phase) => { window.__progress = { pct: Math.round(p * 100), phase }; },
+    onProgress: (p, ph) => phase(ph === 'warming' ? 'loading the world around the spot' : 'scanning', Math.round(p * 100)),
   });
   const c = document.createElement('canvas');
   c.width = strip.width;
