@@ -563,10 +563,12 @@ async function fixAxis(axis) {
             if (secs < 2) return;
             // Real progress, not faith: the /status endpoint reports what the
             // renderer is actually doing (#154).
-            const what = st?.state === 'rendering' && Number.isFinite(st.pct)
-              ? `server rendering… ${st.pct}%`
-              : st?.state === 'queued'
-                ? 'queued behind another render'
+            // Name the phase: a bare 0% during the (slow) setup phase read as
+            // a frozen render (#164).
+            const what = st?.state === 'queued'
+              ? 'queued behind another render'
+              : st?.state === 'rendering'
+                ? `${st.phase || 'server rendering'}${Number.isFinite(st.pct) && st.pct > 0 ? ` ${st.pct}%` : ''}${st.stalledFor ? ` — no progress for ${st.stalledFor}s` : ''}`
                 : 'server rendering';
             poseStatus.textContent = `Building the vector world equirect — ${what} · ${secs}s (first visit here takes ~3 min; the view will not move)`;
           },

@@ -72,7 +72,7 @@ async function renderBand(lon, lat, bins) {
           // Stalled percentages are reported as such (#164) rather than
           // looking identical to slow progress.
           const stalledFor = Math.round((Date.now() - lastMove) / 1000);
-          progress.set(key, { state: 'rendering', pct: p.pct, ...(stalledFor > 30 ? { stalledFor } : {}) });
+          progress.set(key, { state: 'rendering', pct: p.pct, phase: p.phase, ...(stalledFor > 30 ? { stalledFor } : {}) });
         } catch { /* page mid-navigation — keep the last value */ }
       }, 1000);
       try {
