@@ -54,10 +54,22 @@ const settle = (map, budgetMs) => new Promise((resolve) => {
 // Draw the next rendered frame through `copy` before the browser composites
 // it away — the buffer is only guaranteed valid inside the render event.
 const captureNextFrame = (map, copy) => new Promise((resolve) => {
-  map.once('render', () => {
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    map.off('render', onRender);
     try { copy(); } catch (err) { console.warn('auto-fix: frame capture failed', err); }
     resolve();
-  });
+  };
+  const onRender = () => finish();
+  // A 'render' event that never arrives (an occluded or throttled page, a
+  // frame with nothing to draw) used to hang the scan forever — the progress
+  // percentage froze while the clock kept running (#164). Copy anyway after a
+  // deadline: the buffer holds the last drawn frame, which is the one we want.
+  const timer = setTimeout(finish, 1500);
+  map.once('render', onRender);
   map.triggerRepaint();
 });
 
@@ -122,7 +134,7 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
       faceBin(j);
       await settle(map, 400);
       await captureBin(() => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
-      if (onProgress && j % 10 === 0) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
+      if (onProgress) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
     }
     if (aborted) throw new Error('scan cancelled — the view moved to another picture');
     return ctx.getImageData(0, 0, bins, STRIP_H);
