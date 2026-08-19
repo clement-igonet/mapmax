@@ -62,10 +62,17 @@ async function renderBand(lon, lat, bins) {
       const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
       page.on('pageerror', (e) => console.error('renderer pageerror:', String(e)));
       page.on('console', (m) => { if (m.type() === 'error') console.error('renderer console:', m.text().slice(0, 300)); });
+      let lastPct = -1;
+      let lastMove = Date.now();
       const ticker = setInterval(async () => {
         try {
           const p = await page.evaluate(() => window.__progress);
-          if (p) progress.set(key, { state: 'rendering', pct: p.pct });
+          if (!p) return;
+          if (p.pct !== lastPct) { lastPct = p.pct; lastMove = Date.now(); }
+          // Stalled percentages are reported as such (#164) rather than
+          // looking identical to slow progress.
+          const stalledFor = Math.round((Date.now() - lastMove) / 1000);
+          progress.set(key, { state: 'rendering', pct: p.pct, ...(stalledFor > 30 ? { stalledFor } : {}) });
         } catch { /* page mid-navigation — keep the last value */ }
       }, 1000);
       try {
