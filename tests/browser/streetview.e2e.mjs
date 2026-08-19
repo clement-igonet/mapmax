@@ -85,11 +85,21 @@ const chrome = await page.evaluate(() => ({
   editDisabled: document.getElementById('edit-main')?.disabled === true,
   // Read-oriented app: no auth, no server write-back — assert their ABSENCE.
   noAuth: !document.getElementById('auth-signin') && !document.getElementById('pose-connect') && !document.getElementById('pose-save') && !document.getElementById('pose-token'),
+  // #142: the auto-fix entry ships in the Adjust drawer, its preview idle.
+  // Computed display, not just the attribute: a stray `display` rule silently
+  // defeats [hidden] and inflates the drawer past what the GPU paints (#100).
+  autoFixReady: ['auto-yaw', 'auto-pitch', 'auto-roll'].every((id) => !!document.getElementById(id))
+    && getComputedStyle(document.getElementById('auto-preview')).display === 'none'
+    // Pitch/Roll stay locked until the yaw is measured and aligned (#142).
+    && document.getElementById('auto-pitch').disabled === true
+    && document.getElementById('auto-roll').disabled === true
+    && document.getElementById('auto-yaw').disabled === false,
 }));
 assert.ok(chrome.topbar, 'header bar missing (#111)');
 assert.match(chrome.brand, /MapMax/, 'brand missing from the header (#111)');
 assert.ok(chrome.editDisabled, 'Adjust must be disabled in map mode (#111)');
 assert.ok(chrome.noAuth, 'read-oriented app must ship no auth/write-back UI (#111)');
+assert.ok(chrome.autoFixReady, 'one auto-fix button per rotation axis + idle preview must ship in the drawer (#142)');
 console.log('[e2e] reader chrome: brand + disarmed Adjust + no auth/write-back UI (#111) OK');
 
 // Map-mode clutter cap (#41): the tilt is limited so the map never renders 3D

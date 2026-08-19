@@ -165,6 +165,56 @@ export async function photoStrip(imageUrl, panoYaw, { bins = SCAN_BINS } = {}) {
   return ctx.getImageData(0, 0, bins, STRIP_H);
 }
 
+/**
+ * The world band from the mapmax API (#154) — the ONLY source for the app:
+ * the corrector compares two equirects, and building the world one is the
+ * server's job (the in-page camera spin is retired from the app; it lives on
+ * solely inside the API's own headless renderer). A cached spot answers in
+ * well under a second; a first visit blocks while the server renders
+ * (~2 min), with `onWaiting(seconds)` ticking so the UI can say so — and the
+ * view never moves either way.
+ *
+ * Throws on failure; `error.noApi` is true when there is no API at all in
+ * this environment (production, Pages, offline).
+ */
+export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 360000, onWaiting } = {}) {
+  const ctl = new AbortController();
+  const t0 = performance.now();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  // Prove MOTION while the render runs (#154): poll /status every 2 s and
+  // hand {state, pct} to the caller alongside the elapsed seconds.
+  let lastStatus = null;
+  const ticker = onWaiting ? setInterval(async () => {
+    const secs = Math.round((performance.now() - t0) / 1000);
+    if (secs % 2 === 0) {
+      try {
+        const r = await fetch(`/api/worldband/status?lon=${lon}&lat=${lat}&bins=${bins}`);
+        if (r.ok) lastStatus = await r.json();
+      } catch { /* keep the last known status */ }
+    }
+    onWaiting(secs, lastStatus);
+  }, 1000) : 0;
+  try {
+    let res;
+    try {
+      res = await fetch(`/api/worldband?lon=${lon}&lat=${lat}&bins=${bins}`, { signal: ctl.signal });
+    } catch (err) {
+      const e = new Error('no world-band API reachable in this environment');
+      e.noApi = true;
+      throw e;
+    }
+    if (!res.ok) throw new Error(`world-band API answered ${res.status}`);
+    const bmp = await createImageBitmap(await res.blob());
+    const c = scratch(bmp.width, bmp.height);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bmp, 0, 0);
+    return ctx.getImageData(0, 0, bmp.width, bmp.height);
+  } finally {
+    clearTimeout(timer);
+    if (ticker) clearInterval(ticker);
+  }
+}
+
 // Both features of a strip, ready for proposeYawDelta().
 export const stripProfiles = (strip) => ({ skyline: skylineProfile(strip), edge: edgeProfile(strip) });
 

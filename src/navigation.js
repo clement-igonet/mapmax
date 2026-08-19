@@ -11,6 +11,7 @@ import { chooseByHeading, fairMixBySource, pickArrows } from './arrows.js';
 import { STREET_POI_RADIUS_M } from './config.js';
 import { bearingBetween, distanceM, isDragGesture } from './geo.js';
 import { dotColor, getPicture, searchNearby } from './sources.js';
+import { isScanning } from './autoscan.js';
 import { offsetLngLat } from './pose.js';
 import { _photosphere, currentPicture, enterStreetView, getCurrentPositionOffset, isStreetMode, onPictureChanged, onPositionChanged } from './streetview.js';
 
@@ -36,14 +37,16 @@ export function setupNavigation(map) {
   map.on('mousedown', (e) => (downPoint = e.point));
 
   map.on('click', (e) => {
-    if (!isStreetMode() || navigating) return;
+    // A running orientation scan owns the camera (#142): walking now would
+    // fight its spin and leave the plugin outside its sphere.
+    if (!isStreetMode() || navigating || isScanning()) return;
     if (downPoint && isDragGesture(downPoint.x, downPoint.y, e.point.x, e.point.y)) return; // look-drag
     const id = _photosphere()?.groundPick?.(e.point.x, e.point.y);
     if (id) go(map, id);
   });
 
   map.on('mousemove', (e) => {
-    if (!isStreetMode()) return;
+    if (!isStreetMode() || isScanning()) return;
     map.getCanvas().style.cursor = _photosphere()?.groundPick?.(e.point.x, e.point.y) ? 'pointer' : '';
   });
 }

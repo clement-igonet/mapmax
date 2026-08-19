@@ -38,10 +38,31 @@
       <div class="pose-row" id="pose-readout">
         <span id="pose-rot-val">Pitch 0° · Roll 0° · Yaw 0°</span>
       </div>
+      <!-- Auto-fix, one button per rotation axis (#142): each measures what
+           is still wrong on ITS axis and proposes only that. -->
+      <div class="pose-actions" id="auto-buttons">
+        <button type="button" id="auto-yaw" title="Measure the yaw against the vector world (which way the photo faces)">🧭 Yaw</button>
+        <button type="button" id="auto-pitch" title="Measure the pitch against the vector world (tilted up or down)">🧭 Pitch</button>
+        <button type="button" id="auto-roll" title="Measure the roll against the vector world (falling left or right)">🧭 Roll</button>
+      </div>
       <div class="pose-actions">
         <button type="button" id="pose-reset">Reset</button>
       </div>
       <div id="pose-status">Corrections apply live and persist in this browser only.</div>
+    </div>
+    <!-- Auto-fix preview (#142): its OWN overlay, never a child of the pose
+         panel — extra surface inside that panel stopped it rasterizing over
+         the WebGL canvas (#100). The strips canvas is created on demand and
+         removed on close, so the idle DOM is exactly what it was. -->
+    <div id="auto-preview" hidden>
+      <!-- Which axis is being checked, at a glance: current one highlighted,
+           done ✔, skipped ✕, nothing-proposed dimmed. -->
+      <div id="auto-verdict"></div>
+      <div class="pose-actions">
+        <button type="button" id="auto-apply">Apply</button>
+        <button type="button" id="auto-yaw-ok" title="Aligned the photo yourself? Confirm it to unlock Pitch and Roll">Yaw is aligned</button>
+        <button type="button" id="auto-dismiss">Close</button>
+      </div>
     </div>
     <canvas id="minimap" width="132" height="132" hidden></canvas>
     <!-- Roll ring for the pose edit mode (#106): the dashed circle is visual

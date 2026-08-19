@@ -15,8 +15,10 @@ import { setupControls } from './controls.js';
 import { setupMinimap } from './minimap.js';
 import { setupClutterCap } from './mapclutter.js';
 import { clearPicFromUrl, readPicFromUrl, writePicToUrl } from './deeplink.js';
-import { nudgeTilt } from './pose.js';
+import { nudgeTilt, offsetLngLat } from './pose.js';
 import { hardenStyle, transparentPixel } from './stylefix.js';
+import { BAND_DEG, SCAN_BINS, STRIP_H, fetchWorldStrip, photoStrip, poseStrip, stripProfiles } from './autoscan.js';
+import { axisSignificant, columnDiffProfile, fitTilt, isConfident, proposeYawDelta } from './autoyaw.js';
 import { setupLicenseGate } from './licensegate.js';
 
 // The sources this build browses (#112) — Panoramax is the backbone (first
@@ -327,6 +329,8 @@ onPictureChanged((pic) => { if (!pic) leaveStreetUI(); });
 // compass can't see the sun (evening rides, narrow alleys). Persists per
 // sequence and re-renders immediately.
 document.getElementById('flip-pano').addEventListener('click', () => {
+  autoYawAligned = false; // a 180° flip voids any measured alignment (#142)
+  updateAxisButtons();
   const applied = flipCurrentPano();
   if (applied != null) status(`Photo rotated ${applied ? '180°' : 'back to metadata orientation'} for this sequence.`);
   syncPosePanel();
@@ -349,9 +353,266 @@ function syncPosePanel() {
   if (!pose || posePanel.hidden) return;
   poseRotVal.textContent =
     `Pitch ${pose.pitch.toFixed(1)}° · Roll ${pose.roll.toFixed(1)}° · Yaw ${yawToSigned(pose.yaw).toFixed(0)}°`;
+  drawAutoPreview(); // any yaw change re-rolls the photo band (#142)
 }
 onPictureChanged(() => syncPosePanel());
 
+// --- Auto-fix orientation (#142) --------------------------------------------
+// Unroll the vector world and the panorama over the SAME 360° of azimuth: a
+// yaw error is then just a horizontal offset between the two bands, which a
+// circular correlation reads off (autoyaw.js). Everything stays local (#111).
+const autoButtons = [
+  { axis: 'Yaw', el: document.getElementById('auto-yaw') },
+  { axis: 'Pitch', el: document.getElementById('auto-pitch') },
+  { axis: 'Roll', el: document.getElementById('auto-roll') },
+];
+const autoPreview = document.getElementById('auto-preview');
+let autoStrips = null; // created on demand (#142) — see ensureStrips()
+const autoVerdict = document.getElementById('auto-verdict');
+const autoApply = document.getElementById('auto-apply');
+const autoYawOk = document.getElementById('auto-yaw-ok');
+const norm360 = (d) => ((d % 360) + 360) % 360;
+// The world azimuth the image centre currently claims to face.
+const currentPanoYaw = () => norm360((currentPic?.heading || 0) + (getCurrentPose()?.yaw || 0));
+let autoScan = null; // { world, photo, baseYaw, picId } — one stand-point
+let autoPending = null; // the correction the Apply button would make
+// A tilt can only be read from bands that line up horizontally, so Pitch and
+// Roll stay locked until the yaw is measured and found aligned (#142).
+let autoYawAligned = false;
+
+function updateAxisButtons() {
+  // Confirming by eye is offered whenever the yaw is not established: the
+  // bands ARE the alignment tool — the photo band follows every manual turn
+  // (drag, ring, flip) live, so the user can line them up and say so (#142).
+  autoYawOk.hidden = autoYawAligned;
+  for (const b of autoButtons) {
+    if (b.axis === 'Yaw') continue;
+    b.el.disabled = !autoYawAligned;
+    b.el.title = autoYawAligned
+      ? `Measure the ${b.axis.toLowerCase()} against the vector world`
+      : `Fix the yaw first — a ${b.axis.toLowerCase()} reading is meaningless while the two bands are not aligned`;
+  }
+}
+
+// The strips canvas exists only while the preview is open: an idle canvas in
+// the overlay was enough to upset rasterization on the affected GPU (#100).
+function ensureStrips() {
+  if (autoStrips) return autoStrips;
+  autoStrips = document.createElement('canvas');
+  autoStrips.id = 'auto-strips';
+  autoStrips.width = SCAN_BINS;
+  autoStrips.height = STRIP_H * 2 + 8; // two bands with a hairline gap
+  autoPreview.prepend(autoStrips);
+  return autoStrips;
+}
+
+function removeStrips() {
+  autoStrips?.remove();
+  autoStrips = null;
+}
+
+// The photo band AS IT STANDS under the current pose — the basis for every
+// measurement, so each axis is judged on what is still wrong after the
+// corrections already applied (#142).
+function posedPhotoStrip() {
+  const pose = getCurrentPose() || { pitch: 0, roll: 0 };
+  return poseStrip(autoScan.photo, {
+    dYawDeg: autoScan.baseYaw - currentPanoYaw(),
+    pitchDeg: pose.pitch,
+    rollDeg: pose.roll,
+    centreAz: currentPanoYaw(),
+    bandDeg: BAND_DEG,
+  });
+}
+
+function drawAutoPreview() {
+  if (!autoScan || autoPreview.hidden) return;
+  ensureStrips();
+  const ctx = autoStrips.getContext('2d');
+  ctx.clearRect(0, 0, autoStrips.width, autoStrips.height);
+  ctx.putImageData(autoScan.world, 0, 0);
+  ctx.putImageData(posedPhotoStrip(), 0, autoStrips.height - STRIP_H);
+}
+
+function setVerdict(headline, body) {
+  autoVerdict.replaceChildren();
+  const h = document.createElement('div');
+  h.className = 'auto-head';
+  h.textContent = headline;
+  const b = document.createElement('div');
+  b.textContent = body;
+  autoVerdict.append(h, b);
+}
+
+const setAutoBusy = (busy) => {
+  for (const b of autoButtons) b.el.disabled = busy;
+  if (!busy) updateAxisButtons();
+};
+const degTxt = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}°`;
+
+// Measure ONE axis on the current bands and stage its correction.
+function measureAxis(axis) {
+  const world = stripProfiles(autoScan.world);
+  const photo = stripProfiles(posedPhotoStrip());
+  autoPending = null;
+  if (axis === 'Yaw') {
+    const p = proposeYawDelta(photo, world);
+    const pct = Number.isFinite(p.score) ? `${Math.round(p.score * 100)}%` : 'n/a';
+    autoYawAligned = isConfident(p) && Math.abs(p.deltaDeg) < 0.5;
+    updateAxisButtons();
+    if (!isConfident(p)) {
+      setVerdict('Yaw — no confident match', `${p.method} match ${pct}: too little shared structure here (open sky, trees, night). Line the two bands up yourself — drag the photo, use the roll ring or the 180° flip, and the bottom band follows live — then press “Yaw is aligned” to unlock Pitch and Roll.`);
+    } else if (Math.abs(p.deltaDeg) < 0.5) {
+      setVerdict('Yaw — already aligned', `Within half a degree of the vector world (${p.method} match ${pct}). Nothing to change here; Pitch and Roll are now unlocked.`);
+    } else {
+      autoPending = { label: `Yaw ${degTxt(p.deltaDeg)}`, apply: () => setCurrentPose({ yaw: getCurrentPose().yaw + p.deltaDeg }) };
+      setVerdict(`Yaw ${degTxt(p.deltaDeg)}`, `Turn the photo ${degTxt(p.deltaDeg)} (${p.method} match ${pct}). Apply it to unlock Pitch and Roll. Top band: vector world · bottom band: photo.`);
+    }
+  } else {
+    // A tilt can only be read once the bands line up HORIZONTALLY: with a yaw
+    // error still present, the skyline difference is dominated by that offset
+    // and its projection onto sin(a) comes back as a phantom roll — which is
+    // why fixing "roll" used to swing the photo sideways (#142). So measure
+    // the residual yaw first and align the band for the measurement only,
+    // without touching the pose.
+    const yawFix = proposeYawDelta(photo, world);
+    const mustAlign = isConfident(yawFix) && Math.abs(yawFix.deltaDeg) >= 0.5;
+    if (!isConfident(yawFix) && Math.abs(yawFix.deltaDeg || 0) >= 0.5) {
+      setVerdict(`${axis} — align the yaw first`, 'The two bands are not horizontally aligned and the yaw could not be measured confidently here, so a tilt reading would be meaningless. Fix the yaw (by hand or elsewhere in the sequence), then measure again.');
+      autoApply.disabled = true;
+      autoApply.textContent = 'Apply';
+      return;
+    }
+    const alignedStrip = mustAlign
+      ? poseStrip(posedPhotoStrip(), { dYawDeg: -yawFix.deltaDeg, centreAz: currentPanoYaw(), bandDeg: BAND_DEG })
+      : posedPhotoStrip();
+    const aligned = stripProfiles(alignedStrip);
+    const n = world.skyline.length;
+    const centre = currentPanoYaw() + (mustAlign ? yawFix.deltaDeg : 0);
+    // TWO tilt signals into ONE fit (#142): the skyline where a roofline
+    // crosses the band, and per-column vertical correlation of the façade
+    // texture everywhere else — most street pictures have no usable skyline
+    // at all, which is what kept Pitch/Roll reading 'not measurable'.
+    const columnDiff = columnDiffProfile(alignedStrip, autoScan.world, BAND_DEG);
+    const diff = new Float32Array(n);
+    const relAz = new Float32Array(n);
+    let fromSky = 0;
+    let fromFacade = 0;
+    for (let j = 0; j < n; j++) {
+      const sky = (aligned.skyline[j] - world.skyline[j]) * BAND_DEG;
+      if (Number.isFinite(sky)) { diff[j] = sky; fromSky++; }
+      else if (Number.isFinite(columnDiff[j])) { diff[j] = columnDiff[j]; fromFacade++; }
+      else diff[j] = NaN;
+      relAz[j] = ((((((j * 360) / n - centre) % 360) + 540) % 360) - 180);
+    }
+    const t = fitTilt(diff, relAz);
+    const signalTxt = `${fromSky} skyline + ${fromFacade} façade columns`;
+    const yawNote = mustAlign ? ` Measured after aligning the bands by ${degTxt(yawFix.deltaDeg)} of yaw.` : '';
+    const coef = axis === 'Pitch' ? t.pitchDeg : t.rollDeg;
+    const se = axis === 'Pitch' ? t.sePitch : t.seRoll;
+    const pose = getCurrentPose() || { pitch: 0, roll: 0 };
+    if (!Number.isFinite(coef)) {
+      setVerdict(`${axis} — not measurable`, `Too little shared structure: ${signalTxt}, ${t.samples} usable. Neither the roofline nor the façade texture localizes here. The photo is unchanged.${yawNote}`);
+    } else if (!axisSignificant(coef, se)) {
+      setVerdict(`${axis} — within the noise`, `Measured ${degTxt(coef)} ±${se.toFixed(1)}° over ${signalTxt} — not distinguishable from zero. The photo is unchanged.${yawNote}`);
+    } else {
+      const target = (axis === 'Pitch' ? pose.pitch : pose.roll) + coef;
+      const how = axis === 'Pitch'
+        ? `Tip it ${coef >= 0 ? 'up' : 'down'} by ${degTxt(coef)} (to ${degTxt(target)})`
+        : `Let it fall ${coef >= 0 ? 'right' : 'left'} by ${degTxt(coef)} (to ${degTxt(target)})`;
+      autoPending = {
+        label: `${axis} ${degTxt(coef)}`,
+        apply: () => setCurrentPose(axis === 'Pitch' ? { pitch: target } : { roll: target }),
+      };
+      setVerdict(`${axis} ${degTxt(coef)}`, `${how}, ±${se.toFixed(1)}° over ${signalTxt}.${yawNote}`);
+    }
+  }
+  autoApply.disabled = !autoPending;
+  autoApply.textContent = autoPending ? `Apply ${autoPending.label}` : 'Apply';
+}
+
+async function fixAxis(axis) {
+  const ps = _photosphere();
+  const url = currentPic && originalImageUrl(currentPic);
+  if (!ps || !url) return;
+  setAutoBusy(true);
+  try {
+    if (!autoScan || autoScan.picId !== currentPic.id) {
+      // The world equirect comes from the mapmax API, full stop (#154 — the
+      // user's model: the server builds the MapLibre-world equirect, the app
+      // just compares equirects). Cached spots answer instantly; a first
+      // visit waits on the server render with a live counter — the view
+      // never moves either way. No API in this environment → say so.
+      poseStatus.textContent = 'Fetching the vector world equirect…';
+      const o = getCurrentPositionOffset();
+      const [scanLon, scanLat] = o && (o.e || o.n)
+        ? offsetLngLat(currentPic.lon, currentPic.lat, o.e, o.n)
+        : [currentPic.lon, currentPic.lat];
+      let world;
+      try {
+        world = await fetchWorldStrip(scanLon, scanLat, {
+          onWaiting: (secs, st) => {
+            if (secs < 2) return;
+            // Real progress, not faith: the /status endpoint reports what the
+            // renderer is actually doing (#154).
+            const what = st?.state === 'rendering' && Number.isFinite(st.pct)
+              ? `server rendering… ${st.pct}%`
+              : st?.state === 'queued'
+                ? 'queued behind another render'
+                : 'server rendering';
+            poseStatus.textContent = `Building the vector world equirect — ${what} · ${secs}s (first visit here takes ~3 min; the view will not move)`;
+          },
+        });
+      } catch (err) {
+        poseStatus.textContent = err.noApi
+          ? '🧭 needs the world-band API, which this environment does not have — corrections run on the sandbox.'
+          : `World-band API failed: ${err.message}. Press 🧭 again to retry.`;
+        return;
+      }
+      poseStatus.textContent = POSE_STATUS_DEFAULT;
+      const baseYaw = currentPanoYaw();
+      autoScan = { world, photo: await photoStrip(url, baseYaw), baseYaw, picId: currentPic.id };
+    }
+    autoPreview.hidden = false;
+    drawAutoPreview();
+    measureAxis(axis);
+    poseStatus.textContent = POSE_STATUS_DEFAULT;
+  } catch (err) {
+    console.warn('auto-fix scan failed', err);
+    poseStatus.textContent = `Scan failed: ${err.message || 'the panorama could not be read'}.`;
+  } finally {
+    setAutoBusy(false);
+  }
+}
+
+for (const b of autoButtons) b.el.addEventListener('click', () => fixAxis(b.axis));
+autoApply.addEventListener('click', () => {
+  const pending = autoPending;
+  if (!pending) return;
+  pending.apply();
+  syncPosePanel(); // redraws the bands under the new pose
+  syncRing();
+  // Re-measure the same axis so the result is verified, not assumed.
+  const axis = pending.label.split(' ')[0];
+  drawAutoPreview();
+  measureAxis(axis);
+  if (!autoPending) setVerdict(`${axis} applied`, `${pending.label} applied — re-measured and now within the noise. The bands should line up.`);
+});
+autoYawOk.addEventListener('click', () => {
+  autoYawAligned = true;
+  updateAxisButtons();
+  setVerdict('Yaw confirmed by eye', 'Pitch and Roll are unlocked and will be measured against the alignment you set. Re-measure the yaw at any time to check it.');
+});
+document.getElementById('auto-dismiss').addEventListener('click', () => { autoPreview.hidden = true; removeStrips(); autoPending = null; });
+onPictureChanged(() => {
+  autoScan = null;
+  autoPending = null;
+  autoYawAligned = false;
+  updateAxisButtons();
+  autoPreview.hidden = true;
+  removeStrips();
+});
+updateAxisButtons();
 // Rotation nudge pad (#144): the manual counterpart to the axes the pose
 // read-out names — and the fallback when a measurement is inconclusive.
 document.getElementById('pose-rot-pad').addEventListener('click', (e) => {
