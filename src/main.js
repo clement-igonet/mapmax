@@ -32,6 +32,26 @@ registerSource(commonsSource); // tokenless — Pano360 POI spheres (#112)
 // (#76). No-op on www / localhost. Fire-and-forget: it mounts its own overlay.
 setupLicenseGate();
 
+// Dock every street-mode control into the side column while inside a
+// panorama, and put them back when leaving (#166): the controls keep their
+// ids, handlers and tests — only their parent changes.
+const DOCKED = ['exit-street', 'pose-panel', 'pose-rot-pad', 'auto-preview', 'pose-elev', 'blend-control'];
+const homes = new Map();
+function dockControls(on) {
+  const bar = document.getElementById('sidebar');
+  for (const id of DOCKED) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (on) {
+      if (!homes.has(id)) homes.set(id, { parent: el.parentNode, next: el.nextSibling });
+      bar.append(el);
+    } else if (homes.has(id)) {
+      const h = homes.get(id);
+      h.parent.insertBefore(el, h.next);
+    }
+  }
+}
+
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
 };
@@ -78,6 +98,9 @@ setupMinimap(map);
 const applyClutterCap = setupClutterCap(map, isStreetMode);
 // Re-apply on return to the map (street mode restored maxPitch to the hard max).
 onPictureChanged((pic) => { if (!pic) applyClutterCap(); });
+// street-mode is toggled by the plugin's onEnter/onExit (body class); dock in
+// step with the picture so the column is populated before it is shown.
+onPictureChanged((pic) => dockControls(!!pic));
 
 // Show the current picture's info in the page: a 360°/flat badge, the full id,
 // the author and a link to the original image (#34, #40).
