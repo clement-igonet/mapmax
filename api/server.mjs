@@ -44,6 +44,7 @@ let chain = Promise.resolve();
 // Live render state per key, for GET /api/worldband/status (#154): a client
 // waiting minutes deserves proof of motion, not a spinner of faith.
 const progress = new Map(); // key -> { state: 'queued'|'rendering', pct }
+const partials = new Map(); // key -> data URL of the band so far (#171)
 
 function renderKey(lon, lat, bins) {
   // 5 decimals ≈ 1.1 m — GPS noise makes finer keys pure cache misses.
@@ -66,7 +67,8 @@ async function renderBand(lon, lat, bins) {
       let lastMove = Date.now();
       const ticker = setInterval(async () => {
         try {
-          const p = await page.evaluate(() => window.__progress);
+          const [p, part] = await page.evaluate(() => [window.__progress, window.__partial]);
+          if (part) partials.set(key, part);
           if (!p) return;
           if (p.pct !== lastPct) { lastPct = p.pct; lastMove = Date.now(); }
           // Stalled percentages are reported as such (#164) rather than
@@ -90,7 +92,7 @@ async function renderBand(lon, lat, bins) {
     // Sequence the NEXT job after this one whatever happens — a rejected job
     // must fail its requesters, never poison the queue.
     chain = job.catch(() => {});
-    inFlight.set(key, job.finally(() => { inFlight.delete(key); progress.delete(key); }));
+    inFlight.set(key, job.finally(() => { inFlight.delete(key); progress.delete(key); partials.delete(key); }));
   }
   return inFlight.get(key);
 }
@@ -113,6 +115,17 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   try {
     if (url.pathname === '/healthz') { res.writeHead(200).end('ok'); return; }
+    if (url.pathname === '/api/worldband/partial') {
+      // The in-progress band, so a client can render it as it builds (#171).
+      const lon = Number(url.searchParams.get('lon'));
+      const lat = Number(url.searchParams.get('lat'));
+      const bins = Math.min(360, Math.max(36, Number(url.searchParams.get('bins')) || 180));
+      const part = Number.isFinite(lon) && Number.isFinite(lat) ? partials.get(renderKey(lon, lat, bins)) : null;
+      if (!part) { res.writeHead(204, { 'Access-Control-Allow-Origin': '*' }).end(); return; }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+      res.end(Buffer.from(part.split(',')[1], 'base64'));
+      return;
+    }
     if (url.pathname === '/api/worldband/status') {
       const lon = Number(url.searchParams.get('lon'));
       const lat = Number(url.searchParams.get('lat'));

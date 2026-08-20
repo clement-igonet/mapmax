@@ -85,7 +85,7 @@ function scratch(w, h) {
  * Restores the camera, field of view and blend it found, whatever happens.
  * @returns {Promise<ImageData>} width = bins, height = STRIP_H
  */
-export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blendAfter = 0.5, onProgress, shouldAbort } = {}) {
+export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blendAfter = 0.5, onProgress, onPartial, shouldAbort } = {}) {
   const canvas = map.getCanvas();
   const out = scratch(bins, STRIP_H);
   const ctx = out.getContext('2d', { willReadFrequently: true });
@@ -148,6 +148,8 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
         j, 0, width, STRIP_H
       ));
       if (onProgress) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
+      // The band as it stands, so a waiting client can WATCH it build (#171).
+      if (onPartial) onPartial(out.toDataURL('image/png'));
     }
     if (aborted) throw new Error('scan cancelled — the view moved to another picture');
     return ctx.getImageData(0, 0, bins, STRIP_H);
@@ -202,7 +204,7 @@ export async function photoStrip(imageUrl, panoYaw, { bins = SCAN_BINS } = {}) {
  * Throws on failure; `error.noApi` is true when there is no API at all in
  * this environment (production, Pages, offline).
  */
-export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 360000, onWaiting } = {}) {
+export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 360000, onWaiting, onPartialBand } = {}) {
   const ctl = new AbortController();
   const t0 = performance.now();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -215,6 +217,17 @@ export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 
       try {
         const r = await fetch(`/api/worldband/status?lon=${lon}&lat=${lat}&bins=${bins}`);
         if (r.ok) lastStatus = await r.json();
+        // Pull the partial band too, so the caller can show it building (#171).
+        if (onPartialBand) {
+          const pr = await fetch(`/api/worldband/partial?lon=${lon}&lat=${lat}&bins=${bins}`);
+          if (pr.ok) {
+            const bmp = await createImageBitmap(await pr.blob());
+            const c = scratch(bmp.width, bmp.height);
+            const cx = c.getContext('2d', { willReadFrequently: true });
+            cx.drawImage(bmp, 0, 0);
+            onPartialBand(cx.getImageData(0, 0, bmp.width, bmp.height));
+          }
+        }
       } catch { /* keep the last known status */ }
     }
     onWaiting(secs, lastStatus);

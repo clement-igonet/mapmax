@@ -69,6 +69,7 @@ try {
     shouldAbort: () => false,
     // Live progress for the /status endpoint (#154): the server polls this.
     onProgress: (p, ph) => phase(ph === 'warming' ? 'loading the world around the spot' : 'scanning', Math.round(p * 100)),
+    onPartial: (dataUrl) => { window.__partial = dataUrl; },
   });
   const c = document.createElement('canvas');
   c.width = strip.width;

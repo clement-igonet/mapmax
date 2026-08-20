@@ -582,6 +582,12 @@ async function fixAxis(axis) {
       let world;
       try {
         world = await fetchWorldStrip(scanLon, scanLat, {
+          // Show the band building, column by column, instead of a number.
+          onPartialBand: (strip) => {
+            autoPreview.hidden = false;
+            const ctx = ensureStrips().getContext('2d');
+            ctx.putImageData(strip, 0, 0);
+          },
           onWaiting: (secs, st) => {
             if (secs < 2) return;
             // Real progress, not faith: the /status endpoint reports what the
