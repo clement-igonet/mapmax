@@ -96,13 +96,16 @@ body.street-mode #map {
 
 body.street-mode #sidebar { display: flex; }
 
-/* Docked controls sit in normal flow: no absolute positioning over canvas. */
-body.street-mode #exit-street,
-body.street-mode #pose-panel,
-body.street-mode #pose-rot-pad,
-body.street-mode #pose-elev,
-body.street-mode #auto-preview,
-body.street-mode #blend-control {
+/* Docked controls sit in normal flow — scoped to ACTUAL children of the
+   column, never to street-mode alone: a browser holding a cached main.js
+   with this stylesheet would otherwise strip the controls' positioning
+   without docking them, dropping them behind the map (observed). */
+#sidebar > #exit-street,
+#sidebar > #pose-panel,
+#sidebar > #pose-rot-pad,
+#sidebar > #pose-elev,
+#sidebar > #auto-preview,
+#sidebar > #blend-control {
   position: static;
   top: auto;
   right: auto;
