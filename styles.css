@@ -87,7 +87,10 @@ body.street-mode #map {
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  overflow-y: auto;
+  /* NOT scrollable: a scrolling container gets its own compositing layer, and
+     on the affected machine its children stopped painting (#166). Plain flow
+     instead — the column is short enough. */
+  overflow: visible;
   background: rgb(24, 25, 28);
   border-left: 1px solid rgba(255, 255, 255, 0.15);
   color: #fff;
