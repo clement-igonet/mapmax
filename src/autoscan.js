@@ -68,7 +68,7 @@ const captureNextFrame = (map, copy) => new Promise((resolve) => {
   // frame with nothing to draw) used to hang the scan forever — the progress
   // percentage froze while the clock kept running (#164). Copy anyway after a
   // deadline: the buffer holds the last drawn frame, which is the one we want.
-  const timer = setTimeout(finish, 1500);
+  const timer = setTimeout(finish, 400);
   map.once('render', onRender);
   map.triggerRepaint();
 });
@@ -115,7 +115,13 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     const tanY = Math.tan((fovY * Math.PI) / 360);
     const pxPerDegX = canvas.width / ((2 * Math.atan(tanY * aspect) * 180) / Math.PI);
     const pxPerDegY = canvas.height / fovY;
-    const sliceW = Math.max(1, Math.round((360 / bins) * pxPerDegX));
+    // Capture a WIDE slice per frame instead of one 2° sliver (#170): the
+    // camera already sees ~80°, so 20° per frame costs 18 frames instead of
+    // 180 — a tenfold cut in the slowest part of the render. ±10° off-centre
+    // the gnomonic-vs-linear column error is ~0.1°, well under the 2° binning.
+    const SPAN_DEG = 20;
+    const perFrame = Math.max(1, Math.round((SPAN_DEG / 360) * bins));
+    const sliceW = Math.max(1, Math.round(SPAN_DEG * pxPerDegX));
     const bandH = Math.max(2, Math.round(BAND_DEG * pxPerDegY));
     const sx = Math.round(canvas.width / 2 - sliceW / 2);
     const sy = Math.round(canvas.height / 2 - bandH / 2);
@@ -123,17 +129,24 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     // Warm-up lap: request every bearing's tiles first, then let the map go
     // quiet once. Rotating about a fixed point reuses almost the same tiles,
     // so the capture lap then needs only a short settle per bin.
-    for (let j = 0; j < bins; j += 4) {
+    for (let j = 0; j < bins; j += perFrame) {
       if (abortRequested()) break;
       faceBin(j);
       await new Promise((r) => requestAnimationFrame(() => r()));
       if (onProgress) onProgress((0.35 * j) / bins, 'warming');
     }
     if (!abortRequested()) await settle(map, 8000);
-    for (let j = 0; j < bins && !abortRequested(); j++) {
-      faceBin(j);
-      await settle(map, 400);
-      await captureBin(() => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
+    for (let j = 0; j < bins && !abortRequested(); j += perFrame) {
+      const width = Math.min(perFrame, bins - j);
+      // Face the MIDDLE of the span this frame contributes.
+      faceBin(j + width / 2);
+      await settle(map, 200);
+      await captureBin(() => ctx.drawImage(
+        canvas,
+        Math.round(canvas.width / 2 - (width / perFrame) * sliceW / 2), sy,
+        Math.round((width / perFrame) * sliceW), bandH,
+        j, 0, width, STRIP_H
+      ));
       if (onProgress) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
     }
     if (aborted) throw new Error('scan cancelled — the view moved to another picture');
