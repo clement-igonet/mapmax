@@ -58,6 +58,35 @@ function dockControls(on) {
 // raster. Nudging a paint-only property forces it to redraw — no layout
 // shift, no visible change when things are already fine. Also bound to "r"
 // so it can be triggered by hand while blind.
+// #166 INSTRUMENTATION: seven layout/compositing hypotheses have now been
+// wrong. Rather than an eighth, record what the browser itself believes about
+// a control at the moment it looks blank — press "d" while the column is
+// broken and paste the output. Everything here is read-only.
+window.mapmaxDiag = () => {
+  const bar = document.getElementById('sidebar');
+  const el = document.getElementById('auto-pitch') || document.getElementById('pose-reset');
+  const cs = el && getComputedStyle(el);
+  const r = el && el.getBoundingClientRect();
+  const barCs = bar && getComputedStyle(bar);
+  const report = {
+    ua: navigator.userAgent.slice(0, 80),
+    dpr: devicePixelRatio,
+    win: [innerWidth, innerHeight],
+    bar: bar && { rect: bar.getBoundingClientRect().toJSON(), display: barCs.display, opacity: barCs.opacity, transform: barCs.transform, children: bar.children.length },
+    sample: el && { id: el.id, rect: r.toJSON(), display: cs.display, visibility: cs.visibility, opacity: cs.opacity, color: cs.color, background: cs.backgroundColor, zIndex: cs.zIndex, contentVisibility: cs.contentVisibility },
+    // Is anything covering it? elementFromPoint at the control's centre.
+    topmostAtCentre: el && (() => { const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return t ? `${t.tagName}#${t.id || ''}.${t.className || ''}` : null; })(),
+    photosphere: (() => { const ps = _photosphere(); return ps && { mode: ps.mode, blend: ps._blend }; })(),
+    memory: performance.memory ? { usedMB: Math.round(performance.memory.usedJSHeapSize / 1e6), limitMB: Math.round(performance.memory.jsHeapSizeLimit / 1e6) } : 'n/a',
+  };
+  console.log('MAPMAX-DIAG', JSON.stringify(report, null, 2));
+  navigator.clipboard?.writeText(JSON.stringify(report)).catch(() => {});
+  return report;
+};
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey) window.mapmaxDiag();
+});
+
 function repaintControls() {
   const bar = document.getElementById('sidebar');
   if (!bar) return;
