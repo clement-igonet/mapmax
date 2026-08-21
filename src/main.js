@@ -52,6 +52,24 @@ function dockControls(on) {
   }
 }
 
+// Self-heal for the intermittent raster loss (#166): the column's DOM,
+// layout and hit-testing are all correct when it happens (tooltips still
+// appear over invisible buttons), so the compositor is holding a stale
+// raster. Nudging a paint-only property forces it to redraw — no layout
+// shift, no visible change when things are already fine. Also bound to "r"
+// so it can be triggered by hand while blind.
+function repaintControls() {
+  const bar = document.getElementById('sidebar');
+  if (!bar) return;
+  bar.style.opacity = bar.style.opacity === '0.999' ? '' : '0.999';
+}
+setInterval(() => {
+  if (document.body.classList.contains('street-mode') && !document.hidden) repaintControls();
+}, 2000);
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey) repaintControls();
+});
+
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
 };
