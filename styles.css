@@ -92,6 +92,14 @@ body.street-mode #map {
      instead — the column is short enough. */
   overflow: visible;
   background: rgb(24, 25, 28);
+  /* Own compositing layer (#166). The diagnostic proved the controls are
+     laid out, opaque, unobstructed and hit-testable while unpainted — a
+     raster failure below the DOM. Isolating the column means the
+     canvas-driven root layer cannot invalidate its tiles. A workaround for a
+     browser bug, not a fix of our markup. */
+  will-change: transform;
+  transform: translateZ(0);
+  contain: paint;
   border-left: 1px solid rgba(255, 255, 255, 0.15);
   color: #fff;
   font-size: 12px;
