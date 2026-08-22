@@ -2,9 +2,19 @@
 // {lngLat, imageUrl, bearing} target. Kept dependency-free so it is unit-tested
 // offline (no maplibre-gl / WebGL). SD is used for snappy stepping; the entry
 // picture can prefer the sharper HD asset.
+// GPU FOOTPRINT (#172): a 5760×2880 panorama is ~66 MB of GPU memory as an
+// RGBA texture. On a machine already under raster-memory pressure (many tabs,
+// several MapMax instances) Chrome starts evicting tiles and overlay controls
+// stop painting — observed repeatedly. The SD asset (~2048 wide) is ~8× cheaper
+// and, on a sphere at typical FOV, near-indistinguishable; HD stays available
+// with ?hd=1 for a machine with headroom.
+const HD_OPT_IN = (() => {
+  try { return new URLSearchParams(globalThis.location?.search || '').get('hd') === '1'; } catch { return false; }
+})();
+
 export function pictureToTarget(pic, preferHd = false) {
   const a = pic.assets || {};
-  const imageUrl = preferHd ? a.hd || a.sd || a.thumb : a.sd || a.hd || a.thumb;
+  const imageUrl = preferHd && HD_OPT_IN ? a.hd || a.sd || a.thumb : a.sd || a.hd || a.thumb;
   // bearing = travel/look direction; panoYaw = where the image CENTRE really
   // points — differs by 180° when a backward-mounted camera was detected via
   // the sun compass (pic.yawOffset, #66).
@@ -18,7 +28,8 @@ export function pictureToTarget(pic, preferHd = false) {
     panoPitch: pic.posePitch || 0,
     panoRoll: pic.poseRoll || 0,
     // Tiled HD derivate → progressive refinement (plugin 0.3.0), when known.
-    tiles: pic.tiles || null,
+    // Progressive HD tiles allocate another large atlas — same opt-in.
+    tiles: HD_OPT_IN ? pic.tiles || null : null,
   };
 }
 

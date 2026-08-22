@@ -68,7 +68,7 @@ const captureNextFrame = (map, copy) => new Promise((resolve) => {
   // frame with nothing to draw) used to hang the scan forever — the progress
   // percentage froze while the clock kept running (#164). Copy anyway after a
   // deadline: the buffer holds the last drawn frame, which is the one we want.
-  const timer = setTimeout(finish, 1500);
+  const timer = setTimeout(finish, 400);
   map.once('render', onRender);
   map.triggerRepaint();
 });
@@ -85,7 +85,7 @@ function scratch(w, h) {
  * Restores the camera, field of view and blend it found, whatever happens.
  * @returns {Promise<ImageData>} width = bins, height = STRIP_H
  */
-export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blendAfter = 0.5, onProgress, shouldAbort } = {}) {
+export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blendAfter = 0.5, onProgress, onPartial, shouldAbort } = {}) {
   const canvas = map.getCanvas();
   const out = scratch(bins, STRIP_H);
   const ctx = out.getContext('2d', { willReadFrequently: true });
@@ -115,7 +115,13 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     const tanY = Math.tan((fovY * Math.PI) / 360);
     const pxPerDegX = canvas.width / ((2 * Math.atan(tanY * aspect) * 180) / Math.PI);
     const pxPerDegY = canvas.height / fovY;
-    const sliceW = Math.max(1, Math.round((360 / bins) * pxPerDegX));
+    // Capture a WIDE slice per frame instead of one 2° sliver (#170): the
+    // camera already sees ~80°, so 20° per frame costs 18 frames instead of
+    // 180 — a tenfold cut in the slowest part of the render. ±10° off-centre
+    // the gnomonic-vs-linear column error is ~0.1°, well under the 2° binning.
+    const SPAN_DEG = 20;
+    const perFrame = Math.max(1, Math.round((SPAN_DEG / 360) * bins));
+    const sliceW = Math.max(1, Math.round(SPAN_DEG * pxPerDegX));
     const bandH = Math.max(2, Math.round(BAND_DEG * pxPerDegY));
     const sx = Math.round(canvas.width / 2 - sliceW / 2);
     const sy = Math.round(canvas.height / 2 - bandH / 2);
@@ -123,18 +129,27 @@ export async function scanWorldStrip(map, ps, { bins = SCAN_BINS, setBlend, blen
     // Warm-up lap: request every bearing's tiles first, then let the map go
     // quiet once. Rotating about a fixed point reuses almost the same tiles,
     // so the capture lap then needs only a short settle per bin.
-    for (let j = 0; j < bins; j += 4) {
+    for (let j = 0; j < bins; j += perFrame) {
       if (abortRequested()) break;
       faceBin(j);
       await new Promise((r) => requestAnimationFrame(() => r()));
       if (onProgress) onProgress((0.35 * j) / bins, 'warming');
     }
     if (!abortRequested()) await settle(map, 8000);
-    for (let j = 0; j < bins && !abortRequested(); j++) {
-      faceBin(j);
-      await settle(map, 400);
-      await captureBin(() => ctx.drawImage(canvas, sx, sy, sliceW, bandH, j, 0, 1, STRIP_H));
+    for (let j = 0; j < bins && !abortRequested(); j += perFrame) {
+      const width = Math.min(perFrame, bins - j);
+      // Face the MIDDLE of the span this frame contributes.
+      faceBin(j + width / 2);
+      await settle(map, 200);
+      await captureBin(() => ctx.drawImage(
+        canvas,
+        Math.round(canvas.width / 2 - (width / perFrame) * sliceW / 2), sy,
+        Math.round((width / perFrame) * sliceW), bandH,
+        j, 0, width, STRIP_H
+      ));
       if (onProgress) onProgress(0.35 + (0.65 * j) / bins, 'scanning');
+      // The band as it stands, so a waiting client can WATCH it build (#171).
+      if (onPartial) onPartial(out.toDataURL('image/png'));
     }
     if (aborted) throw new Error('scan cancelled — the view moved to another picture');
     return ctx.getImageData(0, 0, bins, STRIP_H);
@@ -189,7 +204,7 @@ export async function photoStrip(imageUrl, panoYaw, { bins = SCAN_BINS } = {}) {
  * Throws on failure; `error.noApi` is true when there is no API at all in
  * this environment (production, Pages, offline).
  */
-export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 360000, onWaiting } = {}) {
+export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 360000, onWaiting, onPartialBand } = {}) {
   const ctl = new AbortController();
   const t0 = performance.now();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -202,6 +217,17 @@ export async function fetchWorldStrip(lon, lat, { bins = SCAN_BINS, timeoutMs = 
       try {
         const r = await fetch(`/api/worldband/status?lon=${lon}&lat=${lat}&bins=${bins}`);
         if (r.ok) lastStatus = await r.json();
+        // Pull the partial band too, so the caller can show it building (#171).
+        if (onPartialBand) {
+          const pr = await fetch(`/api/worldband/partial?lon=${lon}&lat=${lat}&bins=${bins}`);
+          if (pr.ok) {
+            const bmp = await createImageBitmap(await pr.blob());
+            const c = scratch(bmp.width, bmp.height);
+            const cx = c.getContext('2d', { willReadFrequently: true });
+            cx.drawImage(bmp, 0, 0);
+            onPartialBand(cx.getImageData(0, 0, bmp.width, bmp.height));
+          }
+        }
       } catch { /* keep the last known status */ }
     }
     onWaiting(secs, lastStatus);

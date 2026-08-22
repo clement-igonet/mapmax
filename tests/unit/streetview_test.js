@@ -21,8 +21,12 @@ Deno.test('pictureToTarget: default prefers SD for snappy stepping', () => {
   });
 });
 
-Deno.test('pictureToTarget: preferHd uses the sharper image for entry', () => {
-  assertEquals(pictureToTarget(pic, true).imageUrl, 'hd.jpg');
+Deno.test('pictureToTarget: SD by default — HD is opt-in for GPU footprint (#172)', () => {
+  // A 5760-wide HD panorama costs ~66 MB of GPU memory; on a machine under
+  // raster pressure that is what pushes overlay controls out of the cache.
+  // Without ?hd=1 even the entry picture takes the SD asset.
+  assertEquals(pictureToTarget(pic, true).imageUrl, 'sd.jpg');
+  assertEquals(pictureToTarget(pic).imageUrl, 'sd.jpg');
 });
 
 Deno.test('pictureToTarget: sun-compass yawOffset rotates panoYaw, not bearing (#66)', () => {

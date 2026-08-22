@@ -22,6 +22,9 @@
       <div id="topbar-spacer"></div>
     </header>
     <div id="map"></div>
+    <!-- Street-mode control column (#166): controls are DOCKED here, outside
+         the canvas, so nothing composites over WebGL. -->
+    <aside id="sidebar"></aside>
     <div id="hud">
       <div id="hud-status">Loading map…</div>
       <!-- One chip per registered imagery source (#112): colored to match its

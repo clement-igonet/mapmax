@@ -58,9 +58,73 @@ body {
 
 #topbar-spacer { flex: 1; }
 
+/* STRUCTURAL fix for #166 / the #100 family: in street mode the controls move
+   into a real side column and the canvas SHRINKS to the left of it, so the
+   compositor is never asked to draw DOM over the WebGL surface — the failure
+   mode that five rounds of opacity/promotion tuning could not eliminate on
+   the affected GPU. Map mode keeps the full-bleed canvas (no overlay controls
+   there beyond MapLibre's own). */
+:root { --sidebar: 300px; }
+
 #map {
   position: absolute;
   inset: 44px 0 0 0;
+}
+
+body.street-mode #map {
+  right: var(--sidebar);
+}
+
+/* The column itself: an ordinary opaque panel OUTSIDE the canvas. */
+#sidebar {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  bottom: 0;
+  width: var(--sidebar);
+  z-index: 25;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  /* NOT scrollable: a scrolling container gets its own compositing layer, and
+     on the affected machine its children stopped painting (#166). Plain flow
+     instead — the column is short enough. */
+  overflow: visible;
+  background: rgb(24, 25, 28);
+  /* Own compositing layer (#166). The diagnostic proved the controls are
+     laid out, opaque, unobstructed and hit-testable while unpainted — a
+     raster failure below the DOM. Isolating the column means the
+     canvas-driven root layer cannot invalidate its tiles. A workaround for a
+     browser bug, not a fix of our markup. */
+  will-change: transform;
+  transform: translateZ(0);
+  contain: paint;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 12px;
+}
+
+body.street-mode #sidebar { display: flex; }
+
+/* Docked controls sit in normal flow — scoped to ACTUAL children of the
+   column, never to street-mode alone: a browser holding a cached main.js
+   with this stylesheet would otherwise strip the controls' positioning
+   without docking them, dropping them behind the map (observed). */
+#sidebar > #exit-street,
+#sidebar > #pose-panel,
+#sidebar > #pose-rot-pad,
+#sidebar > #pose-elev,
+#sidebar > #auto-preview,
+#sidebar > #blend-control {
+  position: static;
+  top: auto;
+  right: auto;
+  left: auto;
+  bottom: auto;
+  width: auto;
+  transform: none;
+  margin: 0;
 }
 
 #hud {

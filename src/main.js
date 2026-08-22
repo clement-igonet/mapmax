@@ -32,6 +32,73 @@ registerSource(commonsSource); // tokenless — Pano360 POI spheres (#112)
 // (#76). No-op on www / localhost. Fire-and-forget: it mounts its own overlay.
 setupLicenseGate();
 
+// Dock every street-mode control into the side column while inside a
+// panorama, and put them back when leaving (#166): the controls keep their
+// ids, handlers and tests — only their parent changes.
+const DOCKED = ['exit-street', 'pose-panel', 'pose-rot-pad', 'auto-preview', 'pose-elev', 'blend-control'];
+const homes = new Map();
+function dockControls(on) {
+  const bar = document.getElementById('sidebar');
+  for (const id of DOCKED) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (on) {
+      if (!homes.has(id)) homes.set(id, { parent: el.parentNode, next: el.nextSibling });
+      bar.append(el);
+    } else if (homes.has(id)) {
+      const h = homes.get(id);
+      h.parent.insertBefore(el, h.next);
+    }
+  }
+}
+
+// Self-heal for the intermittent raster loss (#166): the column's DOM,
+// layout and hit-testing are all correct when it happens (tooltips still
+// appear over invisible buttons), so the compositor is holding a stale
+// raster. Nudging a paint-only property forces it to redraw — no layout
+// shift, no visible change when things are already fine. Also bound to "r"
+// so it can be triggered by hand while blind.
+// #166 INSTRUMENTATION: seven layout/compositing hypotheses have now been
+// wrong. Rather than an eighth, record what the browser itself believes about
+// a control at the moment it looks blank — press "d" while the column is
+// broken and paste the output. Everything here is read-only.
+window.mapmaxDiag = () => {
+  const bar = document.getElementById('sidebar');
+  const el = document.getElementById('auto-pitch') || document.getElementById('pose-reset');
+  const cs = el && getComputedStyle(el);
+  const r = el && el.getBoundingClientRect();
+  const barCs = bar && getComputedStyle(bar);
+  const report = {
+    ua: navigator.userAgent.slice(0, 80),
+    dpr: devicePixelRatio,
+    win: [innerWidth, innerHeight],
+    bar: bar && { rect: bar.getBoundingClientRect().toJSON(), display: barCs.display, opacity: barCs.opacity, transform: barCs.transform, children: bar.children.length },
+    sample: el && { id: el.id, rect: r.toJSON(), display: cs.display, visibility: cs.visibility, opacity: cs.opacity, color: cs.color, background: cs.backgroundColor, zIndex: cs.zIndex, contentVisibility: cs.contentVisibility },
+    // Is anything covering it? elementFromPoint at the control's centre.
+    topmostAtCentre: el && (() => { const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return t ? `${t.tagName}#${t.id || ''}.${t.className || ''}` : null; })(),
+    photosphere: (() => { const ps = _photosphere(); return ps && { mode: ps.mode, blend: ps._blend }; })(),
+    memory: performance.memory ? { usedMB: Math.round(performance.memory.usedJSHeapSize / 1e6), limitMB: Math.round(performance.memory.jsHeapSizeLimit / 1e6) } : 'n/a',
+  };
+  console.log('MAPMAX-DIAG', JSON.stringify(report, null, 2));
+  navigator.clipboard?.writeText(JSON.stringify(report)).catch(() => {});
+  return report;
+};
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'd' && !e.metaKey && !e.ctrlKey && !e.altKey) window.mapmaxDiag();
+});
+
+function repaintControls() {
+  const bar = document.getElementById('sidebar');
+  if (!bar) return;
+  bar.style.opacity = bar.style.opacity === '0.999' ? '' : '0.999';
+}
+setInterval(() => {
+  if (document.body.classList.contains('street-mode') && !document.hidden) repaintControls();
+}, 2000);
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey) repaintControls();
+});
+
 const status = (msg) => {
   document.getElementById('hud-status').textContent = msg;
 };
@@ -78,6 +145,9 @@ setupMinimap(map);
 const applyClutterCap = setupClutterCap(map, isStreetMode);
 // Re-apply on return to the map (street mode restored maxPitch to the hard max).
 onPictureChanged((pic) => { if (!pic) applyClutterCap(); });
+// street-mode is toggled by the plugin's onEnter/onExit (body class); dock in
+// step with the picture so the column is populated before it is shown.
+onPictureChanged((pic) => dockControls(!!pic));
 
 // Show the current picture's info in the page: a 360°/flat badge, the full id,
 // the author and a link to the original image (#34, #40).
@@ -559,6 +629,12 @@ async function fixAxis(axis) {
       let world;
       try {
         world = await fetchWorldStrip(scanLon, scanLat, {
+          // Show the band building, column by column, instead of a number.
+          onPartialBand: (strip) => {
+            autoPreview.hidden = false;
+            const ctx = ensureStrips().getContext('2d');
+            ctx.putImageData(strip, 0, 0);
+          },
           onWaiting: (secs, st) => {
             if (secs < 2) return;
             // Real progress, not faith: the /status endpoint reports what the
